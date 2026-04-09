@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0d0015;
+  --foreground: #c084fc;
 }
 
 @theme inline {
@@ -10,17 +10,31 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-press-start: var(--font-press-start);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #0d0015;
+  color: #c084fc;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { text-shadow: 0 0 20px rgba(232, 121, 249, 0.4), 0 0 60px rgba(168, 85, 247, 0.15); }
+  50%       { text-shadow: 0 0 40px rgba(232, 121, 249, 0.7), 0 0 100px rgba(168, 85, 247, 0.3); }
+}
+
+@keyframes border-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(124, 58, 237, 0.2), inset 0 0 20px rgba(88, 28, 135, 0.05); }
+  50%       { box-shadow: 0 0 24px rgba(219, 39, 119, 0.3), inset 0 0 30px rgba(88, 28, 135, 0.08); }
 }
