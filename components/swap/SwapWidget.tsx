@@ -273,10 +273,16 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       : 'JUPITER'
     : useRaydium ? 'RAYDIUM' : 'JUPITER';
 
+  const isLetsbonkToken = SKIP_RAYDIUM_TOKENS.has(tokenMint);
+  const showLetsbonkLink =
+    isLetsbonkToken && (swapError === 'NO_LIQUIDITY' || swapError === 'POOL_NOT_FOUND');
+
   const errorMessages: Record<NonNullable<SwapError>, string> = {
     POOL_NOT_FOUND: 'POOL NOT FOUND — LIQUIDITY COMING SOON',
     NO_ROUTE: 'NO ROUTE FOUND FOR THIS PAIR',
-    NO_LIQUIDITY: 'LIQUIDITY COMING SOON',
+    NO_LIQUIDITY: showLetsbonkLink
+      ? `${tokenSymbol} NOT YET ON JUPITER`
+      : 'LIQUIDITY COMING SOON',
     INSUFFICIENT_BALANCE: 'INSUFFICIENT SOL BALANCE',
     TX_FAILED: swapErrorDetail
       ? `TX FAILED: ${swapErrorDetail.slice(0, 80)}`
@@ -402,6 +408,16 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       {swapError && (
         <div style={styles.errorBox}>
           <span style={styles.errorText}>✗ {errorMessages[swapError]}</span>
+          {showLetsbonkLink && (
+            <a
+              href={`https://letsbonk.fun/token/${tokenMint}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.letsbonkLink}
+            >
+              TRADE ON LETSBONK.FUN ↗
+            </a>
+          )}
         </div>
       )}
 
@@ -624,11 +640,23 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #9f1239',
     borderRadius: '6px',
     padding: '10px 12px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
   },
   errorText: {
     color: '#fb7185',
     fontSize: '9px',
     letterSpacing: '1px',
+  },
+  letsbonkLink: {
+    color: '#e879f9',
+    fontSize: '8px',
+    letterSpacing: '1px',
+    textDecoration: 'none',
+    borderBottom: '1px solid #7c3aed',
+    alignSelf: 'flex-start' as const,
+    paddingBottom: '1px',
   },
   successBox: {
     background: 'rgba(88, 28, 135, 0.2)',

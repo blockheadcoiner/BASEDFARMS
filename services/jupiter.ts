@@ -1,11 +1,9 @@
 import type { NormalizedQuote } from './types';
 
 export const PLATFORM_FEE_BPS = 30;
-// Use the Next.js proxy rewrite in the browser to avoid CORS; direct URL server-side.
-export const JUPITER_API_BASE =
-  typeof window !== 'undefined'
-    ? '/api/jupiter/v6'
-    : 'https://quote-api.jup.ag/v6';
+export const JUPITER_API_BASE = 'https://quote-api.jup.ag/v6';
+// Proxy path used in browser first; falls back to direct URL if it returns 5xx.
+const JUPITER_PROXY_BASE = '/api/jupiter/v6';
 
 export interface QuoteResponse {
   inputMint: string;
@@ -68,17 +66,30 @@ export async function getQuote(
     platformFeeBps: PLATFORM_FEE_BPS.toString(),
   });
 
-  const url = `${JUPITER_API_BASE}/quote?${params}`;
-  console.log('[Jupiter] getQuote →', url);
+  // In the browser: try proxy first, fall back to direct URL on server error
+  const urls =
+    typeof window !== 'undefined'
+      ? [`${JUPITER_PROXY_BASE}/quote?${params}`, `${JUPITER_API_BASE}/quote?${params}`]
+      : [`${JUPITER_API_BASE}/quote?${params}`];
 
-  const res = await fetch(url);
-  console.log('[Jupiter] getQuote status:', res.status);
+  let res: Response | null = null;
+  for (const url of urls) {
+    console.log('[Jupiter] getQuote →', url);
+    try {
+      res = await fetch(url);
+      console.log('[Jupiter] getQuote status:', res.status, '| url:', url.startsWith('/') ? 'proxy' : 'direct');
+      if (res.status < 500) break; // 4xx are real Jupiter errors — don't retry
+    } catch (fetchErr) {
+      console.warn('[Jupiter] fetch failed, trying next url:', fetchErr);
+      res = null;
+    }
+  }
+
+  if (!res) throw new Error('JUPITER_FETCH_FAILED:network error');
 
   if (!res.ok) {
     const errorText = await res.text();
     console.error('[Jupiter] getQuote error body:', errorText);
-
-    // Parse Jupiter's structured error when available
     let detail = errorText;
     try {
       const parsed = JSON.parse(errorText) as { error?: string; message?: string };
@@ -86,7 +97,6 @@ export async function getQuote(
     } catch {
       // raw text is fine
     }
-
     throw new Error(`JUPITER_${res.status}:${detail}`);
   }
 

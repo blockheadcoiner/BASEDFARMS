@@ -144,13 +144,19 @@ function InnerProvider({ children }: { children: React.ReactNode }) {
 
 /* ── Public provider ── */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const endpoint =
-    process.env.NEXT_PUBLIC_RPC_URL
-    ?? 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
+  // Use || (not ??) so an empty-string env var also triggers the fallback.
+  // Validate it starts with https:// so a misconfigured var never breaks SSR.
+  const raw = process.env.NEXT_PUBLIC_RPC_URL || '';
+  const endpoint = raw.startsWith('https://')
+    ? raw
+    : 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
 
-  // Phantom auto-registers via Wallet Standard — no explicit adapter needed.
-  // Backpack and other standard wallets are also auto-detected.
-  const wallets = useMemo(() => [new SolflareWalletAdapter()], []);
+  // Only instantiate wallet adapters in the browser — they access window.
+  // Phantom / Backpack auto-register via Wallet Standard without explicit adapters.
+  const wallets = useMemo(
+    () => (typeof window !== 'undefined' ? [new SolflareWalletAdapter()] : []),
+    [],
+  );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
