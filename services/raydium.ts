@@ -12,13 +12,13 @@ import {
   fetchMultipleMintInfos,
   Curve,
   getPdaLaunchpadPoolId,
-  LaunchpadPool,
-  LaunchpadConfig,
+  LAUNCHPAD_PROGRAM,
   PlatformConfig,
   type ApiV3PoolInfoStandardItemCpmm,
   type CpmmKeys,
   type CpmmComputeData,
 } from '@raydium-io/raydium-sdk-v2';
+import { NATIVE_MINT } from '@solana/spl-token';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import type { NormalizedQuote } from './types';
@@ -55,8 +55,6 @@ export const RAYDIUM_SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const BGM_MINT = '3nZg1VZjT8qbeVPPKFmQmj6zbSw8D42RnxSeae3Qbonk';
 const SLIPPAGE = 0.005; // 0.5 %
 
-/** letsbonk.fun LaunchLab program (differs from SDK's LAUNCHPAD_PROGRAM default) */
-export const LETSBONK_PROGRAM = new PublicKey('LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj');
 /** Slippage BN out of 10_000 (0.5 %) */
 const LAUNCHPAD_SLIPPAGE_BPS = new BN(50);
 const LAUNCHPAD_SLIPPAGE_UNIT = new BN(10_000);
@@ -304,40 +302,42 @@ export async function getLaunchpadQuote(
     mintA: mintA.slice(0, 8) + '…',
     amountLamports,
     rpc: RPC_URL.slice(0, 50),
+    program: LAUNCHPAD_PROGRAM.toBase58().slice(0, 8) + '…',
   });
 
-  const connection = getConn();
-
-  // 1. Derive pool PDA using the letsbonk program
+  // 1. Derive pool PDA — official SDK pattern: LAUNCHPAD_PROGRAM + mintA + NATIVE_MINT
   const mintAPk = new PublicKey(mintA);
-  const mintBPk = new PublicKey(RAYDIUM_SOL_MINT);
-  const { publicKey: poolId } = getPdaLaunchpadPoolId(LETSBONK_PROGRAM, mintAPk, mintBPk);
+  const { publicKey: poolId } = getPdaLaunchpadPoolId(LAUNCHPAD_PROGRAM, mintAPk, NATIVE_MINT);
   console.log('[Raydium/Launchpad] derived poolId:', poolId.toBase58());
 
-  // 2. Fetch pool account directly via our connection — no SDK involvement
-  const poolAccount = await connection.getAccountInfo(poolId, 'confirmed');
-  if (!poolAccount) {
-    console.log('[Raydium/Launchpad] pool account not found');
+  // 2. Load SDK (no owner needed for quote)
+  const raydium = await loadRaydium();
+
+  // 3. Fetch pool + config info via SDK — uses raydium.connection (= our Helius conn)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let poolInfo: any;
+  try {
+    poolInfo = await raydium.launchpad.getRpcPoolInfo({ poolId });
+  } catch (err) {
+    console.log('[Raydium/Launchpad] getRpcPoolInfo failed:', err);
     throw new Error('LAUNCHPAD_POOL_NOT_FOUND');
   }
-  const poolInfo = LaunchpadPool.decode(poolAccount.data);
-  console.log('[Raydium/Launchpad] poolInfo decoded | realB:', poolInfo.realB.toString(),
-    '| totalFundRaisingB:', poolInfo.totalFundRaisingB.toString());
+  if (!poolInfo) throw new Error('LAUNCHPAD_POOL_NOT_FOUND');
 
-  // 3. Fetch config account directly
-  const configAccount = await connection.getAccountInfo(poolInfo.configId, 'confirmed');
-  if (!configAccount) throw new Error('LAUNCHPAD_CONFIG_NOT_FOUND');
-  const configInfo = LaunchpadConfig.decode(configAccount.data);
+  console.log('[Raydium/Launchpad] poolInfo | realB:', poolInfo.realB?.toString(),
+    '| totalFundRaisingB:', poolInfo.totalFundRaisingB?.toString(),
+    '| platformId:', poolInfo.platformId?.toBase58());
 
-  // 4. Fetch platform config directly
-  const platformAccount = await connection.getAccountInfo(poolInfo.platformId, 'confirmed');
-  if (!platformAccount) throw new Error('LAUNCHPAD_PLATFORM_NOT_FOUND');
-  const platformInfo = PlatformConfig.decode(platformAccount.data);
+  // 4. Fetch platform config via raydium.connection (guaranteed to be our Helius conn)
+  const platformData = await raydium.connection.getAccountInfo(poolInfo.platformId);
+  if (!platformData) throw new Error('LAUNCHPAD_PLATFORM_NOT_FOUND');
+  const platformInfo = PlatformConfig.decode(platformData.data);
 
-  // 5. Get current slot (needed by bonding curve math)
-  const slot = await connection.getSlot('confirmed');
+  // 5. Get current slot
+  const slot = await raydium.connection.getSlot('confirmed');
 
-  // 6. Compute quote entirely off-chain — no further RPC needed
+  // 6. Compute quote off-chain using bonding curve math
+  const configInfo = poolInfo.configInfo;
   const quoteResult = Curve.buyExactIn({
     poolInfo,
     amountB: new BN(amountLamports),
@@ -409,7 +409,7 @@ export async function executeLaunchpadSwap(
   const raydium = await loadRaydium(userPublicKey);
 
   const txData = await raydium.launchpad.buyToken({
-    programId: LETSBONK_PROGRAM,
+    programId: LAUNCHPAD_PROGRAM,
     mintA: new PublicKey(r.mintA),
     buyAmount: r.amountIn,
     minMintAAmount: r.minAmountOut,
