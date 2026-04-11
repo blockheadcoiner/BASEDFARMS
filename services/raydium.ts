@@ -10,15 +10,10 @@ import {
   WSOLMint,
   PoolFetchType,
   fetchMultipleMintInfos,
-  Curve,
-  getPdaLaunchpadPoolId,
-  LAUNCHPAD_PROGRAM,
-  PlatformConfig,
   type ApiV3PoolInfoStandardItemCpmm,
   type CpmmKeys,
   type CpmmComputeData,
 } from '@raydium-io/raydium-sdk-v2';
-import { NATIVE_MINT } from '@solana/spl-token';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import type { NormalizedQuote } from './types';
@@ -55,9 +50,8 @@ export const RAYDIUM_SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const BGM_MINT = '3nZg1VZjT8qbeVPPKFmQmj6zbSw8D42RnxSeae3Qbonk';
 const SLIPPAGE = 0.005; // 0.5 %
 
-/** Slippage BN out of 10_000 (0.5 %) */
+/** Launchpad slippage in BPS (0.5%) */
 const LAUNCHPAD_SLIPPAGE_BPS = new BN(50);
-const LAUNCHPAD_SLIPPAGE_UNIT = new BN(10_000);
 
 /* ── Internal quote result types ────────────────────────────────────────── */
 interface RaydiumQuoteResult {
@@ -75,6 +69,7 @@ interface RaydiumQuoteResult {
 
 interface LaunchpadQuoteResult {
   mintA: string;
+  programId: PublicKey;
   amountIn: BN;
   amountOut: BN;
   minAmountOut: BN;
@@ -303,93 +298,86 @@ export async function getLaunchpadQuote(
   mintA: string,
   amountLamports: number,
 ): Promise<NormalizedQuote> {
-  console.log('[Raydium/Launchpad] getLaunchpadQuote:', {
+  console.log('[Raydium/Launchpad] getLaunchpadQuote (REST):', {
     mintA: mintA.slice(0, 8) + '…',
     amountLamports,
-    rpc: RPC_URL.slice(0, 50),
-    program: LAUNCHPAD_PROGRAM.toBase58().slice(0, 8) + '…',
   });
 
-  // 1. Derive pool PDA — official SDK pattern: LAUNCHPAD_PROGRAM + mintA + NATIVE_MINT
-  const mintAPk = new PublicKey(mintA);
-  const { publicKey: poolId } = getPdaLaunchpadPoolId(LAUNCHPAD_PROGRAM, mintAPk, NATIVE_MINT);
-  console.log('[Raydium/Launchpad] derived poolId:', poolId.toBase58());
-
-  // 2. Load SDK (no owner needed for quote)
-  const raydium = await loadRaydium();
-
-  // 3. Fetch pool + config info via SDK — uses raydium.connection (= our Helius conn)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let poolInfo: any;
-  try {
-    poolInfo = await raydium.launchpad.getRpcPoolInfo({ poolId });
-  } catch (err) {
-    console.log('[Raydium/Launchpad] getRpcPoolInfo failed:', err);
+  // Step 1: Find the launchpad pool for this mint
+  const poolRes = await fetch(
+    `https://api-v3.raydium.io/pools/info/mint?mint1=${mintA}&poolType=launchpad&poolSortField=liquidity&sortType=desc&pageSize=1&page=1`,
+    { cache: 'no-store' },
+  );
+  if (!poolRes.ok) {
+    console.log('[Raydium/Launchpad] pool API error:', poolRes.status);
     throw new Error('LAUNCHPAD_POOL_NOT_FOUND');
   }
-  if (!poolInfo) throw new Error('LAUNCHPAD_POOL_NOT_FOUND');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const poolData: any = await poolRes.json();
+  const pool = poolData.data?.data?.[0];
+  if (!pool) {
+    console.log('[Raydium/Launchpad] no launchpad pool found for mint');
+    throw new Error('LAUNCHPAD_POOL_NOT_FOUND');
+  }
+  console.log('[Raydium/Launchpad] pool:', pool.id, '| programId:', pool.programId);
 
-  console.log('[Raydium/Launchpad] poolInfo | realB:', poolInfo.realB?.toString(),
-    '| totalFundRaisingB:', poolInfo.totalFundRaisingB?.toString(),
-    '| platformId:', poolInfo.platformId?.toBase58());
-
-  // 4. Fetch platform config via raydium.connection (guaranteed to be our Helius conn)
-  const platformData = await raydium.connection.getAccountInfo(poolInfo.platformId);
-  if (!platformData) throw new Error('LAUNCHPAD_PLATFORM_NOT_FOUND');
-  const platformInfo = PlatformConfig.decode(platformData.data);
-
-  // 5. Get current slot
-  const slot = await raydium.connection.getSlot('confirmed');
-
-  // 6. Compute quote off-chain using bonding curve math
-  const configInfo = poolInfo.configInfo;
-  const quoteResult = Curve.buyExactIn({
-    poolInfo,
-    amountB: new BN(amountLamports),
-    protocolFeeRate: configInfo.tradeFeeRate,
-    platformFeeRate: platformInfo.feeRate,
-    curveType: configInfo.curveType as number,
-    shareFeeRate: new BN(0),
-    creatorFeeRate: platformInfo.creatorFeeRate,
-    transferFeeConfigA: undefined,
-    slot,
+  // Step 2: Get quote via compute endpoint
+  const slippageBps = LAUNCHPAD_SLIPPAGE_BPS.toNumber();
+  const quoteParams = new URLSearchParams({
+    inputMint: RAYDIUM_SOL_MINT,
+    outputMint: mintA,
+    amount: amountLamports.toString(),
+    slippageBps: slippageBps.toString(),
+    txVersion: 'LEGACY',
   });
+  const quoteRes = await fetch(
+    `https://transaction-v1.raydium.io/compute/swap-base-in?${quoteParams}`,
+    { cache: 'no-store' },
+  );
+  if (!quoteRes.ok) {
+    console.log('[Raydium/Launchpad] compute API error:', quoteRes.status);
+    throw new Error('LAUNCHPAD_QUOTE_FAILED');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const quoteJson: any = await quoteRes.json();
+  if (!quoteJson.success || !quoteJson.data) {
+    console.log('[Raydium/Launchpad] compute API returned failure:', quoteJson);
+    throw new Error('LAUNCHPAD_QUOTE_FAILED');
+  }
 
-  const amountOut = quoteResult.amountA.amount;
-  const minAmountOut = amountOut
-    .mul(LAUNCHPAD_SLIPPAGE_UNIT.sub(LAUNCHPAD_SLIPPAGE_BPS))
-    .div(LAUNCHPAD_SLIPPAGE_UNIT);
+  const q = quoteJson.data;
+  const outAmountRaw: string = q.outputAmount.toString();
+  const minOutAmountRaw: string = q.otherAmountThreshold.toString();
+  // priceImpactPct from Raydium API is a decimal fraction (e.g. 0.0012 = 0.12%)
+  const priceImpactPct = (Math.abs(Number(q.priceImpactPct)) * 100).toFixed(4);
 
-  console.log('[Raydium/Launchpad] quote:', {
-    amountOut: amountOut.toString(),
-    minAmountOut: minAmountOut.toString(),
-  });
+  console.log('[Raydium/Launchpad] quote:', { outAmountRaw, minOutAmountRaw, priceImpactPct });
 
-  // 7. Bonding curve graduation progress
-  const raisedSol = poolInfo.realB.toNumber() / 1e9;
-  const targetSol = poolInfo.totalFundRaisingB.toNumber() / 1e9;
-  const pct = targetSol > 0 ? Math.min((raisedSol / targetSol) * 100, 100) : 0;
-  const bondingProgress = { raisedSol, targetSol, pct };
+  // Bonding curve graduation progress — burnPercent is 0–100
+  const burnPct = Math.min(Number(pool.burnPercent ?? 0), 100);
+  const bondingProgress = { raisedSol: 0, targetSol: 0, pct: burnPct };
 
-  console.log('[Raydium/Launchpad] bonding progress:', bondingProgress);
+  // Preserve programId for the execute step
+  const programId = new PublicKey(pool.programId ?? 'LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj');
 
   const raw: LaunchpadQuoteResult = {
     mintA,
+    programId,
     amountIn: new BN(amountLamports),
-    amountOut,
-    minAmountOut,
+    amountOut: new BN(outAmountRaw),
+    minAmountOut: new BN(minOutAmountRaw),
     bondingProgress,
   };
 
   return {
     router: 'raydium',
     subRouter: 'launchpad',
-    outAmountRaw: amountOut.toString(),
-    minOutAmountRaw: minAmountOut.toString(),
-    priceImpactPct: '0.0000',
+    outAmountRaw,
+    minOutAmountRaw,
+    priceImpactPct,
     route: 'Raydium LaunchLab',
     platformFeeSol: null,
-    slippageBps: LAUNCHPAD_SLIPPAGE_BPS.toNumber(),
+    slippageBps,
     bondingProgress,
     _raydiumRaw: raw,
   };
@@ -414,7 +402,7 @@ export async function executeLaunchpadSwap(
   const raydium = await loadRaydium(userPublicKey);
 
   const txData = await raydium.launchpad.buyToken({
-    programId: LAUNCHPAD_PROGRAM,
+    programId: r.programId,
     mintA: new PublicKey(r.mintA),
     buyAmount: r.amountIn,
     minMintAAmount: r.minAmountOut,
