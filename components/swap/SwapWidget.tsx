@@ -2,32 +2,19 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { VersionedTransaction, LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
-import {
-  getSwapTransaction,
-  PLATFORM_FEE_BPS,
-} from '@/services/jupiter';
-import { getJupiterQuoteNormalized } from '@/services/jupiter';
+import { LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
 import {
   getRaydiumQuote,
   executeRaydiumSwap,
   getLaunchpadQuote,
   executeLaunchpadSwap,
-  BGM_MINT,
   type NormalizedQuote,
 } from '@/services/raydium';
 import { useWalletModal } from '@/components/WalletProvider';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
-const PLATFORM_FEE_PCT = (PLATFORM_FEE_BPS / 100).toFixed(1);
-
-// Tokens that use Raydium CPMM instead of Jupiter
-const RAYDIUM_TOKENS = new Set([BGM_MINT]);
-
-// Tokens whose Raydium pool lookup should be skipped entirely — go straight to Jupiter.
-// BGM launched on letsbonk.fun (different launchpad program), not Raydium LaunchLab.
-const SKIP_RAYDIUM_TOKENS = new Set([BGM_MINT]);
+const PLATFORM_FEE_PCT = '0.3';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type SwapError =
@@ -69,7 +56,8 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const { publicKey, signTransaction, connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
 
-  const useRaydium = RAYDIUM_TOKENS.has(tokenMint);
+  // All tokens route through Raydium (CPMM → LaunchLab); Jupiter removed.
+  const useRaydium = true;
 
   const [inputAmount, setInputAmount] = useState('');
   const [quote, setQuote] = useState<NormalizedQuote | null>(null);
@@ -125,28 +113,17 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     try {
       let result: NormalizedQuote;
 
-      if (useRaydium && !SKIP_RAYDIUM_TOKENS.has(tokenMint)) {
-        // Priority: CPMM (graduated) → LaunchLab (bonding curve) → Jupiter
-        try {
-          result = await getRaydiumQuote(SOL_MINT, tokenMint, lamports);
-          console.log('[SwapWidget] CPMM quote success');
-        } catch (cpmmErr) {
-          const cpmmMsg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
-          if (cpmmMsg !== 'POOL_NOT_FOUND') throw cpmmErr;
-          console.log('[SwapWidget] CPMM pool not found, trying LaunchLab…');
-          try {
-            result = await getLaunchpadQuote(tokenMint, lamports);
-            console.log('[SwapWidget] LaunchLab quote success');
-          } catch (launchpadErr) {
-            const launchpadMsg = launchpadErr instanceof Error ? launchpadErr.message : String(launchpadErr);
-            if (launchpadMsg !== 'LAUNCHPAD_POOL_NOT_FOUND') throw launchpadErr;
-            console.log('[SwapWidget] LaunchLab pool not found, trying Jupiter…');
-            result = await getJupiterQuoteNormalized(SOL_MINT, tokenMint, lamports);
-            console.log('[SwapWidget] Jupiter fallback quote success');
-          }
-        }
-      } else {
-        result = await getJupiterQuoteNormalized(SOL_MINT, tokenMint, lamports);
+      // Priority: CPMM (graduated pool) → LaunchLab (bonding curve)
+      // If neither exists, surface a letsbonk.fun link via NO_LIQUIDITY error.
+      try {
+        result = await getRaydiumQuote(SOL_MINT, tokenMint, lamports);
+        console.log('[SwapWidget] CPMM quote success');
+      } catch (cpmmErr) {
+        const cpmmMsg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
+        if (cpmmMsg !== 'POOL_NOT_FOUND') throw cpmmErr;
+        console.log('[SwapWidget] CPMM pool not found, trying LaunchLab…');
+        result = await getLaunchpadQuote(tokenMint, lamports);
+        console.log('[SwapWidget] LaunchLab quote success');
       }
 
       console.log('[SwapWidget] quote success:', result);
@@ -157,20 +134,14 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       console.error('[SwapWidget] fetchQuote error:', raw);
       const msg = raw.toLowerCase();
 
-      if (msg.includes('pool_not_found') || msg === 'pool_not_found') {
-        setSwapError('POOL_NOT_FOUND');
-      } else if (
+      if (
+        msg.includes('launchpad_pool_not_found') ||
+        msg.includes('pool_not_found') ||
         msg.includes('no route') ||
         msg.includes('could not find') ||
-        msg.includes('route not found') ||
-        msg.includes('token not tradable') ||
-        msg.includes('jupiter_404')
+        msg.includes('route not found')
       ) {
         setSwapError('NO_LIQUIDITY');
-      } else if (msg.includes('jupiter_4')) {
-        const detail = raw.replace(/^JUPITER_\d+:/, '').trim();
-        setSwapError('TX_FAILED');
-        setSwapErrorDetail(detail);
       } else {
         setSwapError('TX_FAILED');
         setSwapErrorDetail(raw);
@@ -178,7 +149,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     } finally {
       setIsQuoting(false);
     }
-  }, [tokenMint, useRaydium, connection]);
+  }, [tokenMint, connection]);
 
   const handleInputChange = (val: string) => {
     if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
@@ -214,27 +185,12 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     try {
       let sig: string;
 
-      if (quote.router === 'raydium') {
-        const walletSign = (tx: Transaction) =>
-          signTransaction(tx as Transaction) as Promise<Transaction>;
-        if (quote.subRouter === 'launchpad') {
-          sig = await executeLaunchpadSwap(quote, publicKey, walletSign);
-        } else {
-          sig = await executeRaydiumSwap(quote, publicKey, walletSign);
-        }
+      const walletSign = (tx: Transaction) =>
+        signTransaction(tx as Transaction) as Promise<Transaction>;
+      if (quote.subRouter === 'launchpad') {
+        sig = await executeLaunchpadSwap(quote, publicKey, walletSign);
       } else {
-        // Jupiter: fetch serialized tx, deserialize, sign, send
-        const rawQuote = (quote._jupiterRaw as Parameters<typeof getSwapTransaction>[0]);
-        const swapTx = await getSwapTransaction(rawQuote, publicKey.toBase58(), feeAccount);
-        const txBuffer = Buffer.from(swapTx, 'base64');
-        const transaction = VersionedTransaction.deserialize(txBuffer);
-        const signed = await signTransaction(transaction);
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-        sig = await connection.sendRawTransaction(signed.serialize(), {
-          skipPreflight: false,
-          maxRetries: 3,
-        });
-        await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+        sig = await executeRaydiumSwap(quote, publicKey, walletSign);
       }
 
       console.log('[SwapWidget] swap confirmed:', sig);
@@ -268,21 +224,13 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const priceImpact = quote ? formatPriceImpact(quote.priceImpactPct) : null;
   const canSwap = connected && quote && !isQuoting && !isSwapping && parseFloat(inputAmount) > 0;
   const routerLabel = quote
-    ? quote.router === 'raydium'
-      ? quote.subRouter === 'launchpad' ? 'LAUNCHPAD' : 'RAYDIUM CPMM'
-      : 'JUPITER'
-    : useRaydium ? 'RAYDIUM' : 'JUPITER';
-
-  const isLetsbonkToken = SKIP_RAYDIUM_TOKENS.has(tokenMint);
-  const showLetsbonkLink =
-    isLetsbonkToken && (swapError === 'NO_LIQUIDITY' || swapError === 'POOL_NOT_FOUND');
+    ? quote.subRouter === 'launchpad' ? 'LAUNCHPAD' : 'RAYDIUM CPMM'
+    : 'RAYDIUM';
 
   const errorMessages: Record<NonNullable<SwapError>, string> = {
-    POOL_NOT_FOUND: 'POOL NOT FOUND — LIQUIDITY COMING SOON',
-    NO_ROUTE: 'NO ROUTE FOUND FOR THIS PAIR',
-    NO_LIQUIDITY: showLetsbonkLink
-      ? `${tokenSymbol} NOT YET ON JUPITER`
-      : 'LIQUIDITY COMING SOON',
+    POOL_NOT_FOUND: 'POOL NOT FOUND',
+    NO_ROUTE: 'NO ROUTE FOUND',
+    NO_LIQUIDITY: 'NO RAYDIUM POOL FOUND — TRADE ON LETSBONK.FUN',
     INSUFFICIENT_BALANCE: 'INSUFFICIENT SOL BALANCE',
     TX_FAILED: swapErrorDetail
       ? `TX FAILED: ${swapErrorDetail.slice(0, 80)}`
@@ -408,7 +356,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       {swapError && (
         <div style={styles.errorBox}>
           <span style={styles.errorText}>✗ {errorMessages[swapError]}</span>
-          {showLetsbonkLink && (
+          {swapError === 'NO_LIQUIDITY' && (
             <a
               href={`https://letsbonk.fun/token/${tokenMint}`}
               target="_blank"
