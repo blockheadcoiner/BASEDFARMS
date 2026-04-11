@@ -15,8 +15,11 @@ import { useWalletModal } from '@/components/WalletProvider';
 // ── Constants ────────────────────────────────────────────────────────────────
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PLATFORM_FEE_PCT = '0.3';
+const DEFAULT_SLIPPAGE_BPS = 500; // 5%
 
 // ── Types ────────────────────────────────────────────────────────────────────
+type SlippageMode = '100' | '200' | '500' | '1000' | 'custom';
+
 type SwapError =
   | 'POOL_NOT_FOUND'
   | 'NO_ROUTE'
@@ -68,6 +71,12 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const [isSwapping, setIsSwapping] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [swapSummary, setSwapSummary] = useState<{ sol: string; token: string } | null>(null);
+
+  // ── Slippage state ─────────────────────────────────────────────────────────
+  const [slippageMode, setSlippageMode] = useState<SlippageMode>('500');
+  const [customSlippage, setCustomSlippage] = useState('');
+  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Balance fetch — retry once on 403/rate-limit ──────────────────────────
@@ -93,7 +102,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   }, [publicKey, connection]);
 
   // ── Quote fetching ─────────────────────────────────────────────────────────
-  const fetchQuote = useCallback(async (rawInput: string) => {
+  const fetchQuote = useCallback(async (rawInput: string, bps: number) => {
     const parsed = parseFloat(rawInput);
     if (!rawInput || isNaN(parsed) || parsed <= 0) {
       setQuote(null);
@@ -108,7 +117,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setQuote(null);
 
     const lamports = Math.round(parsed * LAMPORTS_PER_SOL);
-    console.log('[SwapWidget] fetchQuote:', { router: useRaydium ? 'raydium' : 'jupiter', lamports, tokenMint });
+    console.log('[SwapWidget] fetchQuote:', { router: useRaydium ? 'raydium' : 'jupiter', lamports, tokenMint, slippageBps: bps });
 
     try {
       let result: NormalizedQuote;
@@ -122,7 +131,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         const cpmmMsg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
         if (cpmmMsg !== 'POOL_NOT_FOUND') throw cpmmErr;
         console.log('[SwapWidget] CPMM pool not found, trying LaunchLab…');
-        result = await getLaunchpadQuote(tokenMint, lamports);
+        result = await getLaunchpadQuote(tokenMint, lamports, bps);
         console.log('[SwapWidget] LaunchLab quote success');
       }
 
@@ -156,7 +165,27 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setInputAmount(val);
     setTxSignature(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchQuote(val), 300);
+    debounceRef.current = setTimeout(() => fetchQuote(val, slippageBps), 300);
+  };
+
+  // Re-fetch quote when slippage changes (only if there's an active input)
+  const handleSlippageChange = (mode: SlippageMode, bps: number) => {
+    setSlippageMode(mode);
+    setSlippageBps(bps);
+    if (inputAmount && parseFloat(inputAmount) > 0) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => fetchQuote(inputAmount, bps), 150);
+    }
+  };
+
+  const handleCustomSlippageChange = (val: string) => {
+    if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
+    setCustomSlippage(val);
+    const pct = parseFloat(val);
+    if (!isNaN(pct) && pct > 0 && pct <= 50) {
+      const bps = Math.round(pct * 100);
+      handleSlippageChange('custom', bps);
+    }
   };
 
   // ── Swap execution ─────────────────────────────────────────────────────────
@@ -227,6 +256,12 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     ? quote.subRouter === 'launchpad' ? 'LAUNCHPAD' : 'RAYDIUM CPMM'
     : 'RAYDIUM';
 
+  const isLaunchpad = quote?.subRouter === 'launchpad';
+  const priceImpactFloat = quote ? parseFloat(quote.priceImpactPct) : 0;
+  const slippagePct = slippageBps / 100;
+  const warnHighImpact = !!quote && priceImpactFloat > slippagePct;
+  const warnLowSlippage = isLaunchpad && slippageBps < 100;
+
   const errorMessages: Record<NonNullable<SwapError>, string> = {
     POOL_NOT_FOUND: 'POOL NOT FOUND',
     NO_ROUTE: 'NO ROUTE FOUND',
@@ -237,6 +272,14 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       : 'TRANSACTION FAILED — TRY AGAIN',
     WALLET_NOT_CONNECTED: 'CONNECT YOUR WALLET FIRST',
   };
+
+  const slippageOptions: { label: string; mode: SlippageMode; bps: number }[] = [
+    { label: '1%',  mode: '100',  bps: 100  },
+    { label: '2%',  mode: '200',  bps: 200  },
+    { label: '5%',  mode: '500',  bps: 500  },
+    { label: '10%', mode: '1000', bps: 1000 },
+    { label: 'CUSTOM', mode: 'custom', bps: slippageBps },
+  ];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -391,6 +434,76 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         </div>
       )}
 
+      {/* ── Slippage selector ─────────────────────────────────────────────── */}
+      <div style={styles.slippageSection}>
+        <span style={styles.slippageLabel}>SLIPPAGE TOLERANCE</span>
+        <div style={styles.slippagePills}>
+          {slippageOptions.map(({ label, mode, bps }) => {
+            const isSelected = slippageMode === mode;
+            return (
+              <button
+                key={mode}
+                style={{
+                  ...styles.slippagePill,
+                  ...(isSelected ? styles.slippagePillActive : styles.slippagePillInactive),
+                }}
+                onClick={() => {
+                  if (mode === 'custom') {
+                    setSlippageMode('custom');
+                    // keep current bps until user types
+                  } else {
+                    handleSlippageChange(mode, bps);
+                  }
+                }}
+              >
+                {mode === 'custom' && slippageMode === 'custom' && customSlippage
+                  ? `${customSlippage}%`
+                  : label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom input */}
+        {slippageMode === 'custom' && (
+          <div style={styles.customInputRow}>
+            <input
+              style={styles.customInput}
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 3.5"
+              value={customSlippage}
+              onChange={(e) => handleCustomSlippageChange(e.target.value)}
+              autoFocus
+            />
+            <span style={styles.customInputSuffix}>%</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Slippage warnings ─────────────────────────────────────────────── */}
+      {warnLowSlippage && (
+        <div style={styles.warnBox}>
+          <span style={styles.warnText}>
+            ⚠ SLIPPAGE TOO LOW FOR BONDING CURVE
+          </span>
+          <span style={styles.warnSub}>
+            RECOMMEND MINIMUM 1% ON LAUNCHPAD POOLS
+          </span>
+        </div>
+      )}
+
+      {warnHighImpact && !warnLowSlippage && (
+        <div style={styles.warnBox}>
+          <span style={styles.warnText}>
+            ⚠ SWAP MAY FAIL — INCREASE SLIPPAGE
+          </span>
+          <span style={styles.warnSub}>
+            PRICE IMPACT ({priceImpactFloat.toFixed(2)}%) EXCEEDS TOLERANCE ({slippagePct.toFixed(1)}%)
+          </span>
+        </div>
+      )}
+
       {/* Swap button */}
       <button
         style={{
@@ -410,7 +523,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
 
       {/* Footer */}
       <div style={styles.footer}>
-        SLIPPAGE: {quote ? `${(quote.slippageBps / 100).toFixed(1)}%` : '0.5%'}
+        SLIPPAGE: {slippagePct.toFixed(1)}%
         &nbsp;·&nbsp;POWERED BY {routerLabel}
       </div>
     </div>
@@ -641,6 +754,89 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '1px',
     borderBottom: '1px solid #7c3aed',
   },
+  // ── Slippage selector ──────────────────────────────────────────────────────
+  slippageSection: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '6px',
+  },
+  slippageLabel: {
+    color: '#6d28d9',
+    fontSize: '6px',
+    letterSpacing: '1.5px',
+  },
+  slippagePills: {
+    display: 'flex',
+    gap: '6px',
+    flexWrap: 'wrap' as const,
+  },
+  slippagePill: {
+    fontFamily: fontStack,
+    fontSize: '6px',
+    letterSpacing: '1px',
+    padding: '5px 8px',
+    borderRadius: '20px',
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.12s ease',
+    whiteSpace: 'nowrap' as const,
+  },
+  slippagePillActive: {
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    color: '#fff',
+    boxShadow: '0 0 10px rgba(219, 39, 119, 0.45)',
+  },
+  slippagePillInactive: {
+    background: 'rgba(88, 28, 135, 0.15)',
+    color: '#a855f7',
+    border: '1px solid #3b0764',
+  },
+  customInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    background: 'rgba(88, 28, 135, 0.12)',
+    border: '1px solid #6d28d9',
+    borderRadius: '6px',
+    padding: '6px 10px',
+    marginTop: '2px',
+  },
+  customInput: {
+    background: 'transparent',
+    border: 'none',
+    outline: 'none',
+    color: '#f0abfc',
+    fontFamily: fontStack,
+    fontSize: '10px',
+    width: '60px',
+    caretColor: '#e879f9',
+  },
+  customInputSuffix: {
+    color: '#7c3aed',
+    fontSize: '8px',
+    letterSpacing: '1px',
+  },
+  // ── Warnings ───────────────────────────────────────────────────────────────
+  warnBox: {
+    background: 'rgba(190, 18, 60, 0.1)',
+    border: '1px solid #be185d',
+    borderRadius: '6px',
+    padding: '9px 12px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '5px',
+  },
+  warnText: {
+    color: '#f472b6',
+    fontSize: '7px',
+    letterSpacing: '1px',
+  },
+  warnSub: {
+    color: '#9f1239',
+    fontSize: '6px',
+    letterSpacing: '0.5px',
+  },
+  // ── Swap button ────────────────────────────────────────────────────────────
   swapBtn: {
     fontFamily: fontStack,
     fontSize: '11px',

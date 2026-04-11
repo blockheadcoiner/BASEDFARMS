@@ -299,10 +299,15 @@ export async function executeRaydiumSwap(
  * Fetch a Raydium LaunchLab (bonding curve) quote for SOL → mintA.
  * Reads pool state directly on-chain — no REST API dependency.
  * Throws 'LAUNCHPAD_POOL_NOT_FOUND' if no active launchpad pool exists for mintA.
+ *
+ * @param slippageBps  User-selected slippage tolerance in basis points (default 500 = 5%).
+ *                     minAmountOut adds a fixed 150 bps buffer on top to absorb the
+ *                     ~1.5% protocol+platform fees that are deducted from the input.
  */
 export async function getLaunchpadQuote(
   mintA: string,
   amountLamports: number,
+  slippageBps = 500,
 ): Promise<NormalizedQuote> {
   console.log('[Raydium/Launchpad] getLaunchpadQuote (on-chain):', {
     mintA: mintA.slice(0, 8) + '…',
@@ -341,14 +346,15 @@ export async function getLaunchpadQuote(
   // The constant-product formula (without fee deduction):
   //   out = amountIn × (virtualA − realA) / (virtualB + realB + amountIn)
   // Fees (~1.5% total) are deducted from the input by the contract, so the
-  // displayed amount is a slight overestimate. We compensate with a 2% buffer
-  // on minAmountOut so the transaction doesn't fail due to slippage.
+  // displayed amount is a slight overestimate. We add a fixed 150 bps fee
+  // buffer on top of the user's slippage to ensure the tx doesn't fail.
   const amountBN = new BN(amountLamports);
   const outAmount = LaunchConstantProductCurve.buyExactIn({ poolInfo: pool, amount: amountBN });
 
-  // minAmountOut: 2% buffer covers ~1.5% protocol/platform fees + 0.5% slippage
-  const MIN_OUT_BUFFER_BPS = 200;
-  const minOutAmount = outAmount.mul(new BN(10_000 - MIN_OUT_BUFFER_BPS)).div(new BN(10_000));
+  // minAmountOut: user slippage + 150 bps fee buffer (covers ~1.5% protocol+platform fees)
+  const FEE_BUFFER_BPS = 150;
+  const totalBuffer = Math.min(slippageBps + FEE_BUFFER_BPS, 9_000); // cap at 90%
+  const minOutAmount = outAmount.mul(new BN(10_000 - totalBuffer)).div(new BN(10_000));
 
   // Price impact: compare actual output to ideal spot-price output
   const inputReserve = pool.virtualB.add(pool.realB);
@@ -390,7 +396,7 @@ export async function getLaunchpadQuote(
     priceImpactPct,
     route: 'Raydium LaunchLab',
     platformFeeSol: null,
-    slippageBps: MIN_OUT_BUFFER_BPS,
+    slippageBps,
     bondingProgress,
     _raydiumRaw: raw,
   };
