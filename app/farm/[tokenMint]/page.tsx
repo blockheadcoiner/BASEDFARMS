@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, use } from 'react';
+import Link from 'next/link';
 import SwapWidget from '@/components/swap/SwapWidget';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
@@ -29,7 +30,10 @@ export default function FarmPage({ params }: Props) {
       {/* Page header */}
       <header style={styles.header}>
         <div style={styles.logo}>BASED<span style={styles.logoAccent}>FARMS</span></div>
-        <div style={styles.mintPill}>{shortMint}</div>
+        <div style={styles.headerRight}>
+          <div style={styles.mintPill}>{shortMint}</div>
+          <Link href="/launch" style={styles.launchBtn}>+ LAUNCH</Link>
+        </div>
       </header>
 
       {/* Tab bar */}
@@ -43,7 +47,10 @@ export default function FarmPage({ params }: Props) {
             }}
             onClick={() => setActiveTab(tab.id)}
           >
-            {tab.label}
+            {tab.id === 'swap'
+              ? <span className="hero-gradient-text">{tab.label}</span>
+              : tab.label
+            }
             {activeTab === tab.id && <span style={styles.tabUnderline} />}
           </button>
         ))}
@@ -226,6 +233,11 @@ const styles: Record<string, React.CSSProperties> = {
   logoAccent: {
     color: '#e879f9',
   },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
   mintPill: {
     background: 'rgba(88, 28, 135, 0.3)',
     border: '1px solid #4c1d95',
@@ -234,6 +246,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '8px',
     color: '#a855f7',
     letterSpacing: '1px',
+  },
+  launchBtn: {
+    fontFamily: font,
+    fontSize: '7px',
+    letterSpacing: '1px',
+    padding: '5px 10px',
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    border: 'none',
+    borderRadius: '20px',
+    color: '#fff',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap' as const,
+    boxShadow: '0 0 10px rgba(219, 39, 119, 0.35)',
+    display: 'inline-block',
   },
 
   // Tabs

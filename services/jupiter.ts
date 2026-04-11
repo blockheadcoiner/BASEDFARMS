@@ -1,3 +1,5 @@
+import type { NormalizedQuote } from './types';
+
 export const PLATFORM_FEE_BPS = 30;
 export const JUPITER_API_BASE = 'https://quote-api.jup.ag/v6';
 
@@ -62,14 +64,54 @@ export async function getQuote(
     platformFeeBps: PLATFORM_FEE_BPS.toString(),
   });
 
-  const res = await fetch(`${JUPITER_API_BASE}/quote?${params}`);
+  const url = `${JUPITER_API_BASE}/quote?${params}`;
+  console.log('[Jupiter] getQuote →', url);
+
+  const res = await fetch(url);
+  console.log('[Jupiter] getQuote status:', res.status);
 
   if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`Jupiter quote failed (${res.status}): ${error}`);
+    const errorText = await res.text();
+    console.error('[Jupiter] getQuote error body:', errorText);
+
+    // Parse Jupiter's structured error when available
+    let detail = errorText;
+    try {
+      const parsed = JSON.parse(errorText) as { error?: string; message?: string };
+      detail = parsed.error ?? parsed.message ?? errorText;
+    } catch {
+      // raw text is fine
+    }
+
+    throw new Error(`JUPITER_${res.status}:${detail}`);
   }
 
-  return res.json() as Promise<QuoteResponse>;
+  const data = await res.json() as QuoteResponse;
+  console.log('[Jupiter] getQuote result: outAmount=', data.outAmount, 'route=', data.routePlan?.map(r => r.swapInfo.label).join(' → '));
+  return data;
+}
+
+/** Fetch a Jupiter quote and return a NormalizedQuote for SwapWidget */
+export async function getJupiterQuoteNormalized(
+  inputMint: string,
+  outputMint: string,
+  amount: number,
+  slippageBps: number = 50,
+): Promise<NormalizedQuote> {
+  const raw = await getQuote(inputMint, outputMint, amount, slippageBps);
+  const platformFeeSol = raw.platformFee
+    ? (Number(raw.platformFee.amount) / 1e9).toFixed(6)
+    : null;
+  return {
+    router: 'jupiter',
+    outAmountRaw: raw.outAmount,
+    minOutAmountRaw: raw.otherAmountThreshold,
+    priceImpactPct: (Math.abs(parseFloat(raw.priceImpactPct)) * 100).toFixed(4),
+    route: raw.routePlan?.map((r) => r.swapInfo.label).join(' → ') || 'Jupiter',
+    platformFeeSol,
+    slippageBps: raw.slippageBps,
+    _jupiterRaw: raw,
+  } satisfies NormalizedQuote;
 }
 
 export async function getSwapTransaction(

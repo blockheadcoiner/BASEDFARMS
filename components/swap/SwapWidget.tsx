@@ -2,19 +2,38 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { VersionedTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { VersionedTransaction, LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
 import {
-  getQuote,
   getSwapTransaction,
   PLATFORM_FEE_BPS,
-  type QuoteResponse,
 } from '@/services/jupiter';
+import { getJupiterQuoteNormalized } from '@/services/jupiter';
+import {
+  getRaydiumQuote,
+  executeRaydiumSwap,
+  getLaunchpadQuote,
+  executeLaunchpadSwap,
+  BGM_MINT,
+  type NormalizedQuote,
+} from '@/services/raydium';
+import { useWalletModal } from '@/components/WalletProvider';
 
-// SOL mint address
+// ── Constants ────────────────────────────────────────────────────────────────
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PLATFORM_FEE_PCT = (PLATFORM_FEE_BPS / 100).toFixed(1);
 
-type SwapError = 'NO_ROUTE' | 'INSUFFICIENT_BALANCE' | 'TX_FAILED' | 'WALLET_NOT_CONNECTED' | null;
+// Tokens that use Raydium CPMM instead of Jupiter
+const RAYDIUM_TOKENS = new Set([BGM_MINT]);
+
+// ── Types ────────────────────────────────────────────────────────────────────
+type SwapError =
+  | 'POOL_NOT_FOUND'
+  | 'NO_ROUTE'
+  | 'NO_LIQUIDITY'
+  | 'INSUFFICIENT_BALANCE'
+  | 'TX_FAILED'
+  | 'WALLET_NOT_CONNECTED'
+  | null;
 
 interface Props {
   tokenMint: string;
@@ -23,8 +42,9 @@ interface Props {
   onSwapComplete?: (txSignature: string) => void;
 }
 
-function formatAmount(lamports: string, decimals = 9): string {
-  const n = Number(lamports) / Math.pow(10, decimals);
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function formatAmount(raw: string, decimals = 9): string {
+  const n = Number(raw) / Math.pow(10, decimals);
   if (n === 0) return '0';
   if (n < 0.000001) return n.toExponential(4);
   if (n < 0.01) return n.toFixed(6);
@@ -39,63 +59,132 @@ function formatPriceImpact(pct: string): { label: string; color: string } {
   return { label: `${n.toFixed(2)}%`, color: '#ec4899' };
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccount, onSwapComplete }: Props) {
   const { connection } = useConnection();
   const { publicKey, signTransaction, connected } = useWallet();
+  const { setVisible: openWalletModal } = useWalletModal();
+
+  const useRaydium = RAYDIUM_TOKENS.has(tokenMint);
 
   const [inputAmount, setInputAmount] = useState('');
-  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quote, setQuote] = useState<NormalizedQuote | null>(null);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [swapError, setSwapError] = useState<SwapError>(null);
+  const [swapErrorDetail, setSwapErrorDetail] = useState<string | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [swapSummary, setSwapSummary] = useState<{ sol: string; token: string } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch SOL balance when wallet connects
+  // ── Balance fetch — retry once on 403/rate-limit ──────────────────────────
   useEffect(() => {
     if (!publicKey) { setSolBalance(null); return; }
-    connection.getBalance(publicKey).then((bal) => setSolBalance(bal / LAMPORTS_PER_SOL));
+    let cancelled = false;
+
+    const fetchBalance = async (attempt = 1) => {
+      try {
+        console.log('[SwapWidget] getBalance attempt', attempt, publicKey.toBase58());
+        const bal = await connection.getBalance(publicKey);
+        if (!cancelled) setSolBalance(bal / LAMPORTS_PER_SOL);
+        console.log('[SwapWidget] getBalance OK:', bal / LAMPORTS_PER_SOL, 'SOL');
+      } catch (err) {
+        console.warn('[SwapWidget] getBalance error (attempt', attempt, '):', err);
+        if (attempt < 2 && !cancelled) setTimeout(() => fetchBalance(2), 2000);
+        else if (!cancelled) setSolBalance(null);
+      }
+    };
+
+    fetchBalance();
+    return () => { cancelled = true; };
   }, [publicKey, connection]);
 
+  // ── Quote fetching ─────────────────────────────────────────────────────────
   const fetchQuote = useCallback(async (rawInput: string) => {
     const parsed = parseFloat(rawInput);
     if (!rawInput || isNaN(parsed) || parsed <= 0) {
       setQuote(null);
       setSwapError(null);
+      setSwapErrorDetail(null);
       return;
     }
 
     setIsQuoting(true);
     setSwapError(null);
+    setSwapErrorDetail(null);
     setQuote(null);
 
+    const lamports = Math.round(parsed * LAMPORTS_PER_SOL);
+    console.log('[SwapWidget] fetchQuote:', { router: useRaydium ? 'raydium' : 'jupiter', lamports, tokenMint });
+
     try {
-      const lamports = Math.round(parsed * LAMPORTS_PER_SOL);
-      const result = await getQuote(SOL_MINT, tokenMint, lamports);
+      let result: NormalizedQuote;
+
+      if (useRaydium) {
+        // Priority: CPMM (graduated) → LaunchLab (bonding curve) → Jupiter
+        try {
+          result = await getRaydiumQuote(SOL_MINT, tokenMint, lamports);
+          console.log('[SwapWidget] CPMM quote success');
+        } catch (cpmmErr) {
+          const cpmmMsg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
+          if (cpmmMsg !== 'POOL_NOT_FOUND') throw cpmmErr;
+          console.log('[SwapWidget] CPMM pool not found, trying LaunchLab…');
+          try {
+            result = await getLaunchpadQuote(tokenMint, lamports);
+            console.log('[SwapWidget] LaunchLab quote success');
+          } catch (launchpadErr) {
+            const launchpadMsg = launchpadErr instanceof Error ? launchpadErr.message : String(launchpadErr);
+            if (launchpadMsg !== 'LAUNCHPAD_POOL_NOT_FOUND') throw launchpadErr;
+            console.log('[SwapWidget] LaunchLab pool not found, trying Jupiter…');
+            result = await getJupiterQuoteNormalized(SOL_MINT, tokenMint, lamports);
+            console.log('[SwapWidget] Jupiter fallback quote success');
+          }
+        }
+      } else {
+        result = await getJupiterQuoteNormalized(SOL_MINT, tokenMint, lamports);
+      }
+
+      console.log('[SwapWidget] quote success:', result);
       setQuote(result);
+
     } catch (err) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : '';
-      if (msg.includes('no route') || msg.includes('could not find')) {
-        setSwapError('NO_ROUTE');
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error('[SwapWidget] fetchQuote error:', raw);
+      const msg = raw.toLowerCase();
+
+      if (msg.includes('pool_not_found') || msg === 'pool_not_found') {
+        setSwapError('POOL_NOT_FOUND');
+      } else if (
+        msg.includes('no route') ||
+        msg.includes('could not find') ||
+        msg.includes('route not found') ||
+        msg.includes('token not tradable') ||
+        msg.includes('jupiter_404')
+      ) {
+        setSwapError('NO_LIQUIDITY');
+      } else if (msg.includes('jupiter_4')) {
+        const detail = raw.replace(/^JUPITER_\d+:/, '').trim();
+        setSwapError('TX_FAILED');
+        setSwapErrorDetail(detail);
       } else {
         setSwapError('TX_FAILED');
+        setSwapErrorDetail(raw);
       }
     } finally {
       setIsQuoting(false);
     }
-  }, [tokenMint]);
+  }, [tokenMint, useRaydium, connection]);
 
   const handleInputChange = (val: string) => {
-    // Only allow valid numeric input
     if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
     setInputAmount(val);
     setTxSignature(null);
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchQuote(val), 300);
   };
 
+  // ── Swap execution ─────────────────────────────────────────────────────────
   const handleSwap = async () => {
     if (!connected || !publicKey || !signTransaction) {
       setSwapError('WALLET_NOT_CONNECTED');
@@ -111,61 +200,96 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
 
     setIsSwapping(true);
     setSwapError(null);
+    setSwapErrorDetail(null);
     setTxSignature(null);
+    setSwapSummary(null);
+
+    const solIn = inputAmount;
+    const tokenOut = formatAmount(quote.outAmountRaw);
 
     try {
-      const swapTx = await getSwapTransaction(quote, publicKey.toBase58(), feeAccount);
-      const txBuffer = Buffer.from(swapTx, 'base64');
-      const transaction = VersionedTransaction.deserialize(txBuffer);
+      let sig: string;
 
-      const signed = await signTransaction(transaction);
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      const sig = await connection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: false,
-        maxRetries: 3,
-      });
+      if (quote.router === 'raydium') {
+        const walletSign = (tx: Transaction) =>
+          signTransaction(tx as Transaction) as Promise<Transaction>;
+        if (quote.subRouter === 'launchpad') {
+          sig = await executeLaunchpadSwap(quote, publicKey, walletSign);
+        } else {
+          sig = await executeRaydiumSwap(quote, publicKey, walletSign);
+        }
+      } else {
+        // Jupiter: fetch serialized tx, deserialize, sign, send
+        const rawQuote = (quote._jupiterRaw as Parameters<typeof getSwapTransaction>[0]);
+        const swapTx = await getSwapTransaction(rawQuote, publicKey.toBase58(), feeAccount);
+        const txBuffer = Buffer.from(swapTx, 'base64');
+        const transaction = VersionedTransaction.deserialize(txBuffer);
+        const signed = await signTransaction(transaction);
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        sig = await connection.sendRawTransaction(signed.serialize(), {
+          skipPreflight: false,
+          maxRetries: 3,
+        });
+        await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+      }
 
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+      console.log('[SwapWidget] swap confirmed:', sig);
       setTxSignature(sig);
+      setSwapSummary({ sol: solIn, token: tokenOut });
       onSwapComplete?.(sig);
 
-      // Reset
+      // Reset form, refresh balance
       setInputAmount('');
       setQuote(null);
-      connection.getBalance(publicKey).then((bal) => setSolBalance(bal / LAMPORTS_PER_SOL));
+      connection.getBalance(publicKey)
+        .then((bal) => setSolBalance(bal / LAMPORTS_PER_SOL))
+        .catch(() => {});
+
     } catch (err) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error('[SwapWidget] handleSwap error:', raw);
+      const msg = raw.toLowerCase();
       if (msg.includes('insufficient') || msg.includes('0x1')) {
         setSwapError('INSUFFICIENT_BALANCE');
       } else {
         setSwapError('TX_FAILED');
+        setSwapErrorDetail(raw);
       }
     } finally {
       setIsSwapping(false);
     }
   };
 
+  // ── Derived display values ────────────────────────────────────────────────
   const priceImpact = quote ? formatPriceImpact(quote.priceImpactPct) : null;
-  const routeLabels = quote?.routePlan.map((r) => r.swapInfo.label).join(' → ');
-  const platformFeeAmount = quote?.platformFee
-    ? formatAmount(quote.platformFee.amount)
-    : null;
-
   const canSwap = connected && quote && !isQuoting && !isSwapping && parseFloat(inputAmount) > 0;
+  const routerLabel = quote
+    ? quote.router === 'raydium'
+      ? quote.subRouter === 'launchpad' ? 'LAUNCHPAD' : 'RAYDIUM CPMM'
+      : 'JUPITER'
+    : useRaydium ? 'RAYDIUM' : 'JUPITER';
 
   const errorMessages: Record<NonNullable<SwapError>, string> = {
+    POOL_NOT_FOUND: 'POOL NOT FOUND — LIQUIDITY COMING SOON',
     NO_ROUTE: 'NO ROUTE FOUND FOR THIS PAIR',
+    NO_LIQUIDITY: 'LIQUIDITY COMING SOON',
     INSUFFICIENT_BALANCE: 'INSUFFICIENT SOL BALANCE',
-    TX_FAILED: 'TRANSACTION FAILED — TRY AGAIN',
+    TX_FAILED: swapErrorDetail
+      ? `TX FAILED: ${swapErrorDetail.slice(0, 80)}`
+      : 'TRANSACTION FAILED — TRY AGAIN',
     WALLET_NOT_CONNECTED: 'CONNECT YOUR WALLET FIRST',
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
         <span style={styles.headerTitle}>◈ SWAP</span>
-        <span style={styles.feeTag}>FEE: {PLATFORM_FEE_PCT}%</span>
+        <div style={styles.headerRight}>
+          <span style={styles.routerBadge}>{routerLabel}</span>
+          <span style={styles.feeTag}>FEE: {PLATFORM_FEE_PCT}%</span>
+        </div>
       </div>
 
       {/* Input token — SOL */}
@@ -207,13 +331,40 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         <div style={styles.outputAmount}>
           {isQuoting ? (
             <span style={styles.quoting}>ROUTING...</span>
+          ) : swapError === 'POOL_NOT_FOUND' || swapError === 'NO_LIQUIDITY' ? (
+            <span style={styles.noLiquidity}>POOL COMING SOON</span>
           ) : quote ? (
-            <span style={styles.outputValue}>{formatAmount(quote.outAmount)}</span>
+            <span style={styles.outputValue}>{formatAmount(quote.outAmountRaw)}</span>
           ) : (
             <span style={styles.placeholder}>—</span>
           )}
         </div>
       </div>
+
+      {/* Bonding curve progress bar */}
+      {quote?.bondingProgress && !isQuoting && (
+        <div style={styles.progressBox}>
+          <div style={styles.progressHeader}>
+            <span style={styles.progressLabel}>◈ BONDING CURVE</span>
+            <span style={styles.progressPct}>{quote.bondingProgress.pct.toFixed(1)}%</span>
+          </div>
+          <div style={styles.progressTrack}>
+            <div
+              style={{
+                ...styles.progressFill,
+                width: `${Math.min(quote.bondingProgress.pct, 100)}%`,
+                background: quote.bondingProgress.pct >= 100
+                  ? 'linear-gradient(90deg, #7c3aed, #ec4899)'
+                  : `linear-gradient(90deg, #7c3aed ${100 - quote.bondingProgress.pct}%, #a855f7 100%)`,
+              }}
+            />
+          </div>
+          <div style={styles.progressStat}>
+            <span>{quote.bondingProgress.raisedSol.toFixed(2)} SOL raised</span>
+            <span>{quote.bondingProgress.targetSol.toFixed(0)} SOL target</span>
+          </div>
+        </div>
+      )}
 
       {/* Quote details */}
       {quote && !isQuoting && (
@@ -224,21 +375,21 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
               {priceImpact!.label}
             </span>
           </div>
-          {routeLabels && (
+          {quote.route && (
             <div style={styles.detailRow}>
               <span style={styles.detailKey}>ROUTE</span>
-              <span style={{ ...styles.detailValue, color: '#c084fc' }}>{routeLabels}</span>
+              <span style={{ ...styles.detailValue, color: '#c084fc' }}>{quote.route}</span>
             </div>
           )}
-          {platformFeeAmount && (
+          {quote.platformFeeSol && (
             <div style={styles.detailRow}>
               <span style={styles.detailKey}>PLATFORM FEE</span>
-              <span style={styles.detailValue}>{platformFeeAmount} SOL</span>
+              <span style={styles.detailValue}>{quote.platformFeeSol} SOL</span>
             </div>
           )}
           <div style={styles.detailRow}>
             <span style={styles.detailKey}>MIN RECEIVED</span>
-            <span style={styles.detailValue}>{formatAmount(quote.otherAmountThreshold)}</span>
+            <span style={styles.detailValue}>{formatAmount(quote.minOutAmountRaw)}</span>
           </div>
         </div>
       )}
@@ -253,7 +404,14 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       {/* Success */}
       {txSignature && (
         <div style={styles.successBox}>
-          <span style={styles.successText}>✓ SWAP CONFIRMED</span>
+          <div style={styles.successInner}>
+            <span style={styles.successText}>✓ SWAP CONFIRMED</span>
+            {swapSummary && (
+              <span style={styles.successSummary}>
+                {swapSummary.sol} SOL → {swapSummary.token} {tokenSymbol}
+              </span>
+            )}
+          </div>
           <a
             href={`https://solscan.io/tx/${txSignature}`}
             target="_blank"
@@ -269,23 +427,29 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       <button
         style={{
           ...styles.swapBtn,
-          ...(canSwap ? styles.swapBtnActive : styles.swapBtnDisabled),
+          ...(!connected
+            ? styles.swapBtnConnect
+            : canSwap
+              ? styles.swapBtnActive
+              : styles.swapBtnDisabled),
           ...(isSwapping ? styles.swapBtnSwapping : {}),
         }}
-        onClick={handleSwap}
-        disabled={!canSwap}
+        onClick={!connected ? () => openWalletModal(true) : handleSwap}
+        disabled={connected && !canSwap}
       >
         {isSwapping ? 'SWAPPING...' : !connected ? 'CONNECT WALLET' : 'EXECUTE SWAP'}
       </button>
 
-      {/* Slippage note */}
+      {/* Footer */}
       <div style={styles.footer}>
-        <span>SLIPPAGE: {quote ? `${quote.slippageBps / 100}%` : '0.5%'} · POWERED BY JUPITER</span>
+        SLIPPAGE: {quote ? `${(quote.slippageBps / 100).toFixed(1)}%` : '0.5%'}
+        &nbsp;·&nbsp;POWERED BY {routerLabel}
       </div>
     </div>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const fontStack = '"Press Start 2P", "Courier New", monospace';
 
 const styles: Record<string, React.CSSProperties> = {
@@ -316,6 +480,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     letterSpacing: '2px',
     textShadow: '0 0 10px rgba(232, 121, 249, 0.6)',
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  routerBadge: {
+    color: '#6d28d9',
+    fontSize: '6px',
+    letterSpacing: '1px',
+    background: 'rgba(88, 28, 135, 0.2)',
+    border: '1px solid #3b0764',
+    borderRadius: '4px',
+    padding: '2px 5px',
   },
   feeTag: {
     color: '#a855f7',
@@ -389,6 +567,11 @@ const styles: Record<string, React.CSSProperties> = {
   placeholder: {
     color: '#4c1d95',
   },
+  noLiquidity: {
+    color: '#db2777',
+    fontSize: '10px',
+    letterSpacing: '1px',
+  },
   arrowRow: {
     display: 'flex',
     alignItems: 'center',
@@ -451,12 +634,25 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '8px',
+  },
+  successInner: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '5px',
+    minWidth: 0,
   },
   successText: {
     color: '#e879f9',
     fontSize: '9px',
     letterSpacing: '1px',
     textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
+  },
+  successSummary: {
+    color: '#a855f7',
+    fontSize: '7px',
+    letterSpacing: '1px',
+    wordBreak: 'break-all' as const,
   },
   txLink: {
     color: '#a855f7',
@@ -475,6 +671,12 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     transition: 'all 0.15s ease',
+  },
+  swapBtnConnect: {
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    color: '#fff',
+    boxShadow: '0 0 20px rgba(219, 39, 119, 0.4)',
+    cursor: 'pointer',
   },
   swapBtnActive: {
     background: 'linear-gradient(135deg, #7c3aed, #db2777)',
@@ -498,5 +700,50 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '7px',
     letterSpacing: '1px',
     textAlign: 'center',
+  },
+  progressBox: {
+    background: 'rgba(88, 28, 135, 0.12)',
+    border: '1px solid #4c1d95',
+    borderRadius: '8px',
+    padding: '10px 14px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '6px',
+  },
+  progressHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    color: '#c084fc',
+    fontSize: '8px',
+    letterSpacing: '1px',
+  },
+  progressPct: {
+    color: '#e879f9',
+    fontSize: '8px',
+    letterSpacing: '1px',
+    textShadow: '0 0 6px rgba(232, 121, 249, 0.5)',
+  },
+  progressTrack: {
+    height: '6px',
+    background: 'rgba(88, 28, 135, 0.3)',
+    borderRadius: '3px',
+    overflow: 'hidden',
+    border: '1px solid #3b0764',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease',
+    boxShadow: '0 0 6px rgba(168, 85, 247, 0.5)',
+  },
+  progressStat: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    color: '#6d28d9',
+    fontSize: '7px',
+    letterSpacing: '1px',
   },
 };

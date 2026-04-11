@@ -1,29 +1,72 @@
 'use client';
 
 import Link from 'next/link';
+import ConnectWalletButton from '@/components/ConnectWalletButton';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
 
 const BGM_MINT = '3nZg1VZjT8qbeVPPKFmQmj6zbSw8D42RnxSeae3Qbonk';
 
-// Ticker items — duplicated so the seamless loop works
-const TICKER_ITEMS = [
-  '◈ BGM',
-  '·',
-  'BASED GOOSE MONEY',
-  '·',
-  '$BGM',
-  '·',
-  'FARM COMING SOON',
-  '·',
-  '◎ SOLANA',
-  '·',
-  'POWERED BY JUPITER',
-  '·',
-  '0.3% SWAP FEE',
-  '·',
+type TickerEntry =
+  | { kind: 'sep' }
+  | { kind: 'text';  label: string; pink?: boolean }
+  | { kind: 'logo';  symbol: string; symbolColor: string; label: string; pink?: boolean };
+
+// One full pass of the ticker — duplicated below for seamless loop
+const TICKER: TickerEntry[] = [
+  { kind: 'text', label: '◈ BGM' },
+  { kind: 'sep' },
+  { kind: 'text', label: 'BASED GOOSE MONEY' },
+  { kind: 'sep' },
+  { kind: 'text', label: 'BASEDFARMS.fun' },
+  { kind: 'sep' },
+  { kind: 'logo', symbol: '✦', symbolColor: '#19FB9B', label: 'POWERED BY JUPITER' },
+  { kind: 'sep' },
+  { kind: 'logo', symbol: '◎', symbolColor: '#9945FF', label: 'BUILT ON SOLANA' },
+  { kind: 'sep' },
+  { kind: 'text', label: '0.3% SWAP FEE' },
+  { kind: 'sep' },
+  { kind: 'text', label: 'BASED FARMS',          pink: true },
+  { kind: 'sep' },
+  { kind: 'text', label: 'LAUNCH YOUR TOKEN',    pink: true },
+  { kind: 'sep' },
+  { kind: 'text', label: 'LAUNCH YOUR FARM',     pink: true },
+  { kind: 'sep' },
+  { kind: 'text', label: 'BUILD YOUR COMMUNITY', pink: true },
+  { kind: 'sep' },
 ];
-const TICKER_CONTENT = [...TICKER_ITEMS, ...TICKER_ITEMS]; // duplicate for loop
+
+function renderEntry(e: TickerEntry, key: string) {
+  if (e.kind === 'sep') {
+    return <span key={key} style={tickerSepStyle}>·</span>;
+  }
+  const color = e.pink ? '#db2777' : '#ffffff';
+  if (e.kind === 'logo') {
+    return (
+      <span key={key} style={{ ...tickerItemStyle, color }}>
+        <span style={{ color: e.symbolColor, marginRight: '5px' }}>{e.symbol}</span>
+        {e.label}
+      </span>
+    );
+  }
+  return <span key={key} style={{ ...tickerItemStyle, color }}>{e.label}</span>;
+}
+
+// Defined outside component to avoid re-creation on every render
+const tickerItemStyle: React.CSSProperties = {
+  fontFamily: font,
+  fontSize: '8px',
+  letterSpacing: '1.5px',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+};
+const tickerSepStyle: React.CSSProperties = {
+  color: '#3b0764',
+  fontSize: '8px',
+  fontFamily: font,
+  flexShrink: 0,
+  padding: '0 8px',
+};
 
 function truncate(s: string, head = 6, tail = 4) {
   return `${s.slice(0, head)}...${s.slice(-tail)}`;
@@ -36,11 +79,9 @@ export default function HomePage() {
       {/* ── SCROLLING TICKER ── */}
       <div style={styles.tickerBar} aria-label="Live ticker">
         <div style={styles.tickerTrack}>
-          {TICKER_CONTENT.map((item, i) => (
-            <span key={i} style={item === '·' ? styles.tickerDot : styles.tickerItem}>
-              {item}
-            </span>
-          ))}
+          {/* Render content twice — second copy keeps the scroll seamless */}
+          {TICKER.map((e, i) => renderEntry(e, `a${i}`))}
+          {TICKER.map((e, i) => renderEntry(e, `b${i}`))}
         </div>
       </div>
 
@@ -50,9 +91,12 @@ export default function HomePage() {
           BASED<span style={styles.navAccent}>FARMS</span>
           <span style={styles.navDot}>.fun</span>
         </div>
-        <Link href="/launch" style={styles.launchBtn}>
-          + LAUNCH TOKEN
-        </Link>
+        <div style={styles.navActions}>
+          <ConnectWalletButton />
+          <Link href="/launch" style={styles.launchBtn}>
+            + LAUNCH TOKEN
+          </Link>
+        </div>
       </nav>
 
       {/* ── HERO ── */}
@@ -66,9 +110,9 @@ export default function HomePage() {
         <div style={styles.heroInner}>
           <div style={styles.heroBadge}>◈ SOLANA DEFI LAUNCHPAD</div>
 
-          <h1 style={styles.heroTitle}>
+          <h1 style={styles.heroTitle} className="hero-gradient-text">
             BASED<br />
-            <span style={styles.heroTitlePink}>FARMS</span>
+            FARMS
           </h1>
 
           <p style={styles.heroTagline}>
@@ -104,8 +148,16 @@ export default function HomePage() {
             {/* Top row: avatar + identity + badge */}
             <div style={styles.cardTop}>
               <div style={styles.avatar}>
-                {/* Goose pixel-art stand-in */}
-                <span style={styles.avatarEmoji}>🪿</span>
+                <img
+                  src="/tokens/bgm-logo.png"
+                  alt="BGM"
+                  style={styles.avatarImg}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty('display', 'block');
+                  }}
+                />
+                <span style={styles.avatarFallback}>🪿</span>
               </div>
 
               <div style={styles.cardIdentity}>
@@ -225,28 +277,17 @@ const styles: Record<string, React.CSSProperties> = {
   // Ticker
   tickerBar: {
     width: '100%',
-    background: 'rgba(88, 28, 135, 0.2)',
+    background: 'rgba(15, 0, 30, 0.85)',
     borderBottom: '1px solid #3b0764',
     overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    padding: '8px 0',
+    padding: '9px 0',
   },
   tickerTrack: {
     display: 'inline-flex',
-    gap: '20px',
-    animation: 'ticker 30s linear infinite',
+    alignItems: 'center',
+    gap: '0',
+    animation: 'ticker 45s linear infinite',
     whiteSpace: 'nowrap',
-  },
-  tickerItem: {
-    color: '#7c3aed',
-    fontSize: '8px',
-    letterSpacing: '2px',
-    flexShrink: 0,
-  },
-  tickerDot: {
-    color: '#3b0764',
-    fontSize: '8px',
-    flexShrink: 0,
   },
 
   // Nav
@@ -258,6 +299,12 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: '20px 16px 12px',
     boxSizing: 'border-box',
+  },
+  navActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flexWrap: 'nowrap' as const,
   },
   navLogo: {
     fontSize: '13px',
@@ -334,14 +381,9 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 'clamp(36px, 12vw, 72px)',
     lineHeight: 1.1,
-    color: '#f0abfc',
     letterSpacing: '4px',
     fontFamily: font,
     fontWeight: 400,
-    animation: 'glow-pulse 4s ease-in-out infinite',
-  },
-  heroTitlePink: {
-    color: '#e879f9',
   },
   heroTagline: {
     margin: 0,
@@ -381,6 +423,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#a855f7',
     textDecoration: 'none',
     display: 'inline-block',
+  },
+  ctaLaunch: {
+    fontFamily: font,
+    fontSize: '11px',
+    letterSpacing: '3px',
+    padding: '15px 22px',
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    borderRadius: '8px',
+    color: '#fff',
+    textDecoration: 'none',
+    boxShadow: '0 0 24px rgba(219, 39, 119, 0.45)',
+    display: 'block',
+    textAlign: 'center' as const,
+    width: '100%',
+    boxSizing: 'border-box' as const,
   },
 
   // Featured section
@@ -452,19 +509,27 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
   },
   avatar: {
-    width: '52px',
-    height: '52px',
-    borderRadius: '12px',
-    background: 'linear-gradient(135deg, #2d0052, #7c3aed)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '64px',
+    height: '64px',
+    borderRadius: '50%',
+    overflow: 'hidden',
     flexShrink: 0,
     border: '1px solid #4c1d95',
+    background: '#000',
+    boxSizing: 'border-box',
   },
-  avatarEmoji: {
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    objectPosition: 'center',
+    display: 'block',
+    padding: '4px',
+  },
+  avatarFallback: {
     fontSize: '28px',
     lineHeight: 1,
+    display: 'none',
   },
   cardIdentity: {
     flex: 1,
