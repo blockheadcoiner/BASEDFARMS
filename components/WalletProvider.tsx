@@ -145,9 +145,8 @@ function InnerProvider({ children }: { children: React.ReactNode }) {
 /* ── Public provider ── */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const endpoint =
-    typeof window !== 'undefined'
-      ? '/api/rpc'
-      : (process.env.NEXT_PUBLIC_RPC_URL ?? 'https://api.mainnet-beta.solana.com');
+    process.env.NEXT_PUBLIC_RPC_URL
+    ?? 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
 
   // Phantom auto-registers via Wallet Standard — no explicit adapter needed.
   // Backpack and other standard wallets are also auto-detected.

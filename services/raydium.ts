@@ -35,12 +35,9 @@ if (typeof window !== 'undefined') {
 
 /* ── RPC connection ─────────────────────────────────────────────────────── */
 
-// Use the server-side RPC proxy route so Helius env var is always available.
-// In SSR/build contexts fall back to the env var directly.
 const RPC_URL =
-  typeof window !== 'undefined'
-    ? '/api/rpc'
-    : (process.env.NEXT_PUBLIC_RPC_URL ?? 'https://api.mainnet-beta.solana.com');
+  process.env.NEXT_PUBLIC_RPC_URL
+  ?? 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
 
 console.log('[Raydium] RPC_URL:', RPC_URL);
 
