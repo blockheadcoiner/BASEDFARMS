@@ -86,6 +86,10 @@ interface LaunchpadQuoteResult {
 /** Create a lightweight Raydium SDK instance — no token loading, fast init */
 async function loadRaydium(owner?: PublicKey): Promise<Raydium> {
   const connection = getConn();
+  // In the browser, proxy API calls through Next.js rewrites to avoid CORS
+  const urlConfigs = typeof window !== 'undefined'
+    ? { BASE_HOST: '/api/raydium-v3', SWAP_HOST: '/api/raydium' }
+    : {};
   return Raydium.load({
     connection,
     owner,
@@ -93,6 +97,7 @@ async function loadRaydium(owner?: PublicKey): Promise<Raydium> {
     disableLoadToken: true,
     disableFeatureCheck: true,
     blockhashCommitment: 'confirmed',
+    urlConfigs,
   });
 }
 
