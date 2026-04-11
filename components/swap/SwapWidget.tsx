@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
   getRaydiumQuote,
   executeRaydiumSwap,
@@ -16,8 +17,11 @@ import { useWalletModal } from '@/components/WalletProvider';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PLATFORM_FEE_PCT = '0.3';
 const DEFAULT_SLIPPAGE_BPS = 500; // 5%
+// letsbonk.fun LaunchLab tokens always use 6 decimals
+const LAUNCHPAD_TOKEN_DECIMALS = 6;
 
 // ── Types ────────────────────────────────────────────────────────────────────
+type Direction = 'buy' | 'sell';
 type SlippageMode = '100' | '200' | '500' | '1000' | 'custom';
 
 type SwapError =
@@ -59,18 +63,17 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const { publicKey, signTransaction, connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
 
-  // All tokens route through Raydium (CPMM → LaunchLab); Jupiter removed.
-  const useRaydium = true;
-
+  const [direction, setDirection] = useState<Direction>('buy');
   const [inputAmount, setInputAmount] = useState('');
   const [quote, setQuote] = useState<NormalizedQuote | null>(null);
   const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [swapError, setSwapError] = useState<SwapError>(null);
   const [swapErrorDetail, setSwapErrorDetail] = useState<string | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
-  const [swapSummary, setSwapSummary] = useState<{ sol: string; token: string } | null>(null);
+  const [swapSummary, setSwapSummary] = useState<{ input: string; output: string } | null>(null);
 
   // ── Slippage state ─────────────────────────────────────────────────────────
   const [slippageMode, setSlippageMode] = useState<SlippageMode>('500');
@@ -79,30 +82,43 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Balance fetch — retry once on 403/rate-limit ──────────────────────────
+  // ── SOL balance ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!publicKey) { setSolBalance(null); return; }
     let cancelled = false;
-
-    const fetchBalance = async (attempt = 1) => {
+    const fetch_ = async (attempt = 1) => {
       try {
-        console.log('[SwapWidget] getBalance attempt', attempt, publicKey.toBase58());
         const bal = await connection.getBalance(publicKey);
         if (!cancelled) setSolBalance(bal / LAMPORTS_PER_SOL);
-        console.log('[SwapWidget] getBalance OK:', bal / LAMPORTS_PER_SOL, 'SOL');
       } catch (err) {
         console.warn('[SwapWidget] getBalance error (attempt', attempt, '):', err);
-        if (attempt < 2 && !cancelled) setTimeout(() => fetchBalance(2), 2000);
+        if (attempt < 2 && !cancelled) setTimeout(() => fetch_(2), 2000);
         else if (!cancelled) setSolBalance(null);
       }
     };
-
-    fetchBalance();
+    fetch_();
     return () => { cancelled = true; };
   }, [publicKey, connection]);
 
+  // ── Token balance (needed for sell direction) ─────────────────────────────
+  useEffect(() => {
+    if (!publicKey) { setTokenBalance(null); return; }
+    let cancelled = false;
+    const fetch_ = async () => {
+      try {
+        const ata = getAssociatedTokenAddressSync(new PublicKey(tokenMint), publicKey);
+        const info = await connection.getTokenAccountBalance(ata);
+        if (!cancelled) setTokenBalance(Number(info.value.amount) / Math.pow(10, LAUNCHPAD_TOKEN_DECIMALS));
+      } catch {
+        if (!cancelled) setTokenBalance(0);
+      }
+    };
+    fetch_();
+    return () => { cancelled = true; };
+  }, [publicKey, tokenMint, connection]);
+
   // ── Quote fetching ─────────────────────────────────────────────────────────
-  const fetchQuote = useCallback(async (rawInput: string, bps: number) => {
+  const fetchQuote = useCallback(async (rawInput: string, bps: number, dir: Direction) => {
     const parsed = parseFloat(rawInput);
     if (!rawInput || isNaN(parsed) || parsed <= 0) {
       setQuote(null);
@@ -116,23 +132,38 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setSwapErrorDetail(null);
     setQuote(null);
 
-    const lamports = Math.round(parsed * LAMPORTS_PER_SOL);
-    console.log('[SwapWidget] fetchQuote:', { router: useRaydium ? 'raydium' : 'jupiter', lamports, tokenMint, slippageBps: bps });
+    // For buy: input is SOL → convert to lamports
+    // For sell: input is token → convert using LAUNCHPAD_TOKEN_DECIMALS
+    const inputDecimals = dir === 'buy' ? 9 : LAUNCHPAD_TOKEN_DECIMALS;
+    const rawAmount = Math.round(parsed * Math.pow(10, inputDecimals));
+
+    console.log('[SwapWidget] fetchQuote:', { dir, rawAmount, slippageBps: bps, tokenMint });
 
     try {
       let result: NormalizedQuote;
 
-      // Priority: CPMM (graduated pool) → LaunchLab (bonding curve)
-      // If neither exists, surface a letsbonk.fun link via NO_LIQUIDITY error.
-      try {
-        result = await getRaydiumQuote(SOL_MINT, tokenMint, lamports);
-        console.log('[SwapWidget] CPMM quote success');
-      } catch (cpmmErr) {
-        const cpmmMsg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
-        if (cpmmMsg !== 'POOL_NOT_FOUND') throw cpmmErr;
-        console.log('[SwapWidget] CPMM pool not found, trying LaunchLab…');
-        result = await getLaunchpadQuote(tokenMint, lamports, bps);
-        console.log('[SwapWidget] LaunchLab quote success');
+      if (dir === 'buy') {
+        // BUY: SOL → token. Try CPMM first, fall through to LaunchLab.
+        try {
+          result = await getRaydiumQuote(SOL_MINT, tokenMint, rawAmount);
+          console.log('[SwapWidget] CPMM buy quote success');
+        } catch (cpmmErr) {
+          const msg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
+          if (msg !== 'POOL_NOT_FOUND') throw cpmmErr;
+          console.log('[SwapWidget] CPMM not found, trying LaunchLab buy…');
+          result = await getLaunchpadQuote(tokenMint, rawAmount, bps, 'buy');
+        }
+      } else {
+        // SELL: token → SOL. Try CPMM first (reversed mints), fall through.
+        try {
+          result = await getRaydiumQuote(tokenMint, SOL_MINT, rawAmount);
+          console.log('[SwapWidget] CPMM sell quote success');
+        } catch (cpmmErr) {
+          const msg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
+          if (msg !== 'POOL_NOT_FOUND') throw cpmmErr;
+          console.log('[SwapWidget] CPMM not found, trying LaunchLab sell…');
+          result = await getLaunchpadQuote(tokenMint, rawAmount, bps, 'sell');
+        }
       }
 
       console.log('[SwapWidget] quote success:', result);
@@ -141,14 +172,13 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       console.error('[SwapWidget] fetchQuote error:', raw);
-      const msg = raw.toLowerCase();
-
+      const msgL = raw.toLowerCase();
       if (
-        msg.includes('launchpad_pool_not_found') ||
-        msg.includes('pool_not_found') ||
-        msg.includes('no route') ||
-        msg.includes('could not find') ||
-        msg.includes('route not found')
+        msgL.includes('launchpad_pool_not_found') ||
+        msgL.includes('pool_not_found') ||
+        msgL.includes('no route') ||
+        msgL.includes('could not find') ||
+        msgL.includes('route not found')
       ) {
         setSwapError('NO_LIQUIDITY');
       } else {
@@ -160,21 +190,33 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     }
   }, [tokenMint, connection]);
 
+  const triggerFetch = (input: string, bps: number, dir: Direction, delay = 300) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchQuote(input, bps, dir), delay);
+  };
+
   const handleInputChange = (val: string) => {
     if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
     setInputAmount(val);
     setTxSignature(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchQuote(val, slippageBps), 300);
+    triggerFetch(val, slippageBps, direction);
   };
 
-  // Re-fetch quote when slippage changes (only if there's an active input)
+  const handleDirectionToggle = (newDir: Direction) => {
+    if (newDir === direction) return;
+    setDirection(newDir);
+    setInputAmount('');
+    setQuote(null);
+    setSwapError(null);
+    setSwapErrorDetail(null);
+    setTxSignature(null);
+  };
+
   const handleSlippageChange = (mode: SlippageMode, bps: number) => {
     setSlippageMode(mode);
     setSlippageBps(bps);
     if (inputAmount && parseFloat(inputAmount) > 0) {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => fetchQuote(inputAmount, bps), 150);
+      triggerFetch(inputAmount, bps, direction, 150);
     }
   };
 
@@ -183,8 +225,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setCustomSlippage(val);
     const pct = parseFloat(val);
     if (!isNaN(pct) && pct > 0 && pct <= 50) {
-      const bps = Math.round(pct * 100);
-      handleSlippageChange('custom', bps);
+      handleSlippageChange('custom', Math.round(pct * 100));
     }
   };
 
@@ -197,7 +238,11 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     if (!quote) return;
 
     const parsed = parseFloat(inputAmount);
-    if (solBalance !== null && parsed > solBalance) {
+    if (direction === 'buy' && solBalance !== null && parsed > solBalance) {
+      setSwapError('INSUFFICIENT_BALANCE');
+      return;
+    }
+    if (direction === 'sell' && tokenBalance !== null && parsed > tokenBalance) {
       setSwapError('INSUFFICIENT_BALANCE');
       return;
     }
@@ -208,14 +253,18 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setTxSignature(null);
     setSwapSummary(null);
 
-    const solIn = inputAmount;
-    const tokenOut = formatAmount(quote.outAmountRaw, quote.outDecimals ?? 9);
+    const inputLabel = direction === 'buy'
+      ? `${inputAmount} SOL`
+      : `${inputAmount} ${tokenSymbol}`;
+    const outputLabel = direction === 'buy'
+      ? `${formatAmount(quote.outAmountRaw, quote.outDecimals ?? 9)} ${tokenSymbol}`
+      : `${formatAmount(quote.outAmountRaw, 9)} SOL`;
 
     try {
       let sig: string;
-
       const walletSign = (tx: Transaction) =>
         signTransaction(tx as Transaction) as Promise<Transaction>;
+
       if (quote.subRouter === 'launchpad') {
         sig = await executeLaunchpadSwap(quote, publicKey, walletSign);
       } else {
@@ -224,21 +273,23 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
 
       console.log('[SwapWidget] swap confirmed:', sig);
       setTxSignature(sig);
-      setSwapSummary({ sol: solIn, token: tokenOut });
+      setSwapSummary({ input: inputLabel, output: outputLabel });
       onSwapComplete?.(sig);
 
-      // Reset form, refresh balance
       setInputAmount('');
       setQuote(null);
-      connection.getBalance(publicKey)
-        .then((bal) => setSolBalance(bal / LAMPORTS_PER_SOL))
-        .catch(() => {});
+
+      // Refresh balances
+      connection.getBalance(publicKey).then(b => setSolBalance(b / LAMPORTS_PER_SOL)).catch(() => {});
+      try {
+        const ata = getAssociatedTokenAddressSync(new PublicKey(tokenMint), publicKey);
+        connection.getTokenAccountBalance(ata).then(b => setTokenBalance(Number(b.value.amount) / Math.pow(10, LAUNCHPAD_TOKEN_DECIMALS))).catch(() => {});
+      } catch { /* no ata */ }
 
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       console.error('[SwapWidget] handleSwap error:', raw);
-      const msg = raw.toLowerCase();
-      if (msg.includes('insufficient') || msg.includes('0x1')) {
+      if (raw.toLowerCase().includes('insufficient') || raw.includes('0x1')) {
         setSwapError('INSUFFICIENT_BALANCE');
       } else {
         setSwapError('TX_FAILED');
@@ -249,7 +300,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     }
   };
 
-  // ── Derived display values ────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
   const priceImpact = quote ? formatPriceImpact(quote.priceImpactPct) : null;
   const canSwap = connected && quote && !isQuoting && !isSwapping && parseFloat(inputAmount) > 0;
   const routerLabel = quote
@@ -262,11 +313,17 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const warnHighImpact = !!quote && priceImpactFloat > slippagePct;
   const warnLowSlippage = isLaunchpad && slippageBps < 100;
 
+  // Balance used for the current direction
+  const inputBalance = direction === 'buy' ? solBalance : tokenBalance;
+  const inputSymbol  = direction === 'buy' ? '◎ SOL' : `◈ ${tokenSymbol}`;
+  const outputSymbol = direction === 'buy' ? `◈ ${tokenSymbol}` : '◎ SOL';
+  const outputDecimals = direction === 'buy' ? (quote?.outDecimals ?? 9) : 9;
+
   const errorMessages: Record<NonNullable<SwapError>, string> = {
     POOL_NOT_FOUND: 'POOL NOT FOUND',
     NO_ROUTE: 'NO ROUTE FOUND',
     NO_LIQUIDITY: 'NO RAYDIUM POOL FOUND — TRADE ON LETSBONK.FUN',
-    INSUFFICIENT_BALANCE: 'INSUFFICIENT SOL BALANCE',
+    INSUFFICIENT_BALANCE: `INSUFFICIENT ${direction === 'buy' ? 'SOL' : tokenSymbol} BALANCE`,
     TX_FAILED: swapErrorDetail
       ? `TX FAILED: ${swapErrorDetail.slice(0, 80)}`
       : 'TRANSACTION FAILED — TRY AGAIN',
@@ -284,25 +341,50 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={styles.container}>
+      {/* BUY / SELL toggle */}
+      <div style={styles.directionToggle}>
+        <button
+          style={{
+            ...styles.dirBtn,
+            ...(direction === 'buy' ? styles.dirBtnBuy : styles.dirBtnInactive),
+          }}
+          onClick={() => handleDirectionToggle('buy')}
+        >
+          ▲ BUY
+        </button>
+        <button
+          style={{
+            ...styles.dirBtn,
+            ...(direction === 'sell' ? styles.dirBtnSell : styles.dirBtnInactive),
+          }}
+          onClick={() => handleDirectionToggle('sell')}
+        >
+          ▼ SELL
+        </button>
+      </div>
+
       {/* Header */}
       <div style={styles.header}>
-        <span style={styles.headerTitle}>◈ SWAP</span>
+        <span style={styles.headerTitle}>◈ {direction === 'buy' ? 'BUY' : 'SELL'} {tokenSymbol}</span>
         <div style={styles.headerRight}>
           <span style={styles.routerBadge}>{routerLabel}</span>
           <span style={styles.feeTag}>FEE: {PLATFORM_FEE_PCT}%</span>
         </div>
       </div>
 
-      {/* Input token — SOL */}
+      {/* Input — YOU SELL */}
       <div style={styles.tokenBox}>
         <div style={styles.tokenLabel}>
-          <span style={styles.tokenName}>◎ SOL</span>
-          {solBalance !== null && (
+          <span style={styles.tokenName}>
+            <span style={styles.youLabel}>YOU SELL&nbsp;&nbsp;</span>
+            {inputSymbol}
+          </span>
+          {inputBalance !== null && (
             <button
               style={styles.balanceBtn}
-              onClick={() => handleInputChange(solBalance.toFixed(6))}
+              onClick={() => handleInputChange(inputBalance.toFixed(direction === 'buy' ? 6 : 4))}
             >
-              BAL: {solBalance.toFixed(4)}
+              BAL: {inputBalance.toFixed(direction === 'buy' ? 4 : 2)}
             </button>
           )}
         </div>
@@ -323,11 +405,14 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         <div style={styles.arrowLine} />
       </div>
 
-      {/* Output token */}
+      {/* Output — YOU RECEIVE */}
       <div style={styles.tokenBox}>
         <div style={styles.tokenLabel}>
-          <span style={styles.tokenName}>◈ {tokenSymbol}</span>
-          <span style={styles.lockedTag}>LOCKED</span>
+          <span style={styles.tokenName}>
+            <span style={styles.youLabel}>YOU RECEIVE&nbsp;&nbsp;</span>
+            {outputSymbol}
+          </span>
+          {direction === 'buy' && <span style={styles.lockedTag}>LOCKED</span>}
         </div>
         <div style={styles.outputAmount}>
           {isQuoting ? (
@@ -335,15 +420,15 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           ) : swapError === 'POOL_NOT_FOUND' || swapError === 'NO_LIQUIDITY' ? (
             <span style={styles.noLiquidity}>POOL COMING SOON</span>
           ) : quote ? (
-            <span style={styles.outputValue}>{formatAmount(quote.outAmountRaw, quote.outDecimals ?? 9)}</span>
+            <span style={styles.outputValue}>{formatAmount(quote.outAmountRaw, outputDecimals)}</span>
           ) : (
             <span style={styles.placeholder}>—</span>
           )}
         </div>
       </div>
 
-      {/* Bonding curve progress bar */}
-      {quote?.bondingProgress && !isQuoting && (
+      {/* Bonding curve progress bar — buy only */}
+      {direction === 'buy' && quote?.bondingProgress && !isQuoting && (
         <div style={styles.progressBox}>
           <div style={styles.progressHeader}>
             <span style={styles.progressLabel}>◈ BONDING CURVE</span>
@@ -382,15 +467,12 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
               <span style={{ ...styles.detailValue, color: '#c084fc' }}>{quote.route}</span>
             </div>
           )}
-          {quote.platformFeeSol && (
-            <div style={styles.detailRow}>
-              <span style={styles.detailKey}>PLATFORM FEE</span>
-              <span style={styles.detailValue}>{quote.platformFeeSol} SOL</span>
-            </div>
-          )}
           <div style={styles.detailRow}>
             <span style={styles.detailKey}>MIN RECEIVED</span>
-            <span style={styles.detailValue}>{formatAmount(quote.minOutAmountRaw, quote.outDecimals ?? 9)}</span>
+            <span style={styles.detailValue}>
+              {formatAmount(quote.minOutAmountRaw, outputDecimals)}
+              {' '}{direction === 'buy' ? tokenSymbol : 'SOL'}
+            </span>
           </div>
         </div>
       )}
@@ -419,7 +501,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
             <span style={styles.successText}>✓ SWAP CONFIRMED</span>
             {swapSummary && (
               <span style={styles.successSummary}>
-                {swapSummary.sol} SOL → {swapSummary.token} {tokenSymbol}
+                {swapSummary.input} → {swapSummary.output}
               </span>
             )}
           </div>
@@ -434,7 +516,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         </div>
       )}
 
-      {/* ── Slippage selector ─────────────────────────────────────────────── */}
+      {/* Slippage selector */}
       <div style={styles.slippageSection}>
         <span style={styles.slippageLabel}>SLIPPAGE TOLERANCE</span>
         <div style={styles.slippagePills}>
@@ -448,23 +530,16 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
                   ...(isSelected ? styles.slippagePillActive : styles.slippagePillInactive),
                 }}
                 onClick={() => {
-                  if (mode === 'custom') {
-                    setSlippageMode('custom');
-                    // keep current bps until user types
-                  } else {
-                    handleSlippageChange(mode, bps);
-                  }
+                  if (mode === 'custom') { setSlippageMode('custom'); }
+                  else { handleSlippageChange(mode, bps); }
                 }}
               >
                 {mode === 'custom' && slippageMode === 'custom' && customSlippage
-                  ? `${customSlippage}%`
-                  : label}
+                  ? `${customSlippage}%` : label}
               </button>
             );
           })}
         </div>
-
-        {/* Custom input */}
         {slippageMode === 'custom' && (
           <div style={styles.customInputRow}>
             <input
@@ -481,23 +556,16 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         )}
       </div>
 
-      {/* ── Slippage warnings ─────────────────────────────────────────────── */}
+      {/* Warnings */}
       {warnLowSlippage && (
         <div style={styles.warnBox}>
-          <span style={styles.warnText}>
-            ⚠ SLIPPAGE TOO LOW FOR BONDING CURVE
-          </span>
-          <span style={styles.warnSub}>
-            RECOMMEND MINIMUM 1% ON LAUNCHPAD POOLS
-          </span>
+          <span style={styles.warnText}>⚠ SLIPPAGE TOO LOW FOR BONDING CURVE</span>
+          <span style={styles.warnSub}>RECOMMEND MINIMUM 1% ON LAUNCHPAD POOLS</span>
         </div>
       )}
-
       {warnHighImpact && !warnLowSlippage && (
         <div style={styles.warnBox}>
-          <span style={styles.warnText}>
-            ⚠ SWAP MAY FAIL — INCREASE SLIPPAGE
-          </span>
+          <span style={styles.warnText}>⚠ SWAP MAY FAIL — INCREASE SLIPPAGE</span>
           <span style={styles.warnSub}>
             PRICE IMPACT ({priceImpactFloat.toFixed(2)}%) EXCEEDS TOLERANCE ({slippagePct.toFixed(1)}%)
           </span>
@@ -511,20 +579,26 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           ...(!connected
             ? styles.swapBtnConnect
             : canSwap
-              ? styles.swapBtnActive
+              ? (direction === 'sell' ? styles.swapBtnSell : styles.swapBtnActive)
               : styles.swapBtnDisabled),
           ...(isSwapping ? styles.swapBtnSwapping : {}),
         }}
         onClick={!connected ? () => openWalletModal(true) : handleSwap}
         disabled={connected && !canSwap}
       >
-        {isSwapping ? 'SWAPPING...' : !connected ? 'CONNECT WALLET' : 'EXECUTE SWAP'}
+        {isSwapping
+          ? (direction === 'sell' ? 'SELLING...' : 'SWAPPING...')
+          : !connected
+            ? 'CONNECT WALLET'
+            : direction === 'sell'
+              ? 'EXECUTE SELL'
+              : 'EXECUTE SWAP'}
       </button>
 
       {/* Footer */}
       <div style={styles.footer}>
         SLIPPAGE: {slippagePct.toFixed(1)}%
-        &nbsp;·&nbsp;POWERED BY {routerLabel}
+        &nbsp;·&nbsp;POWERED BY RAYDIUM
       </div>
     </div>
   );
@@ -549,6 +623,41 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
     boxSizing: 'border-box',
   },
+  // ── Direction toggle ───────────────────────────────────────────────────────
+  directionToggle: {
+    display: 'flex',
+    gap: '6px',
+    background: 'rgba(15, 0, 30, 0.6)',
+    border: '1px solid #3b0764',
+    borderRadius: '8px',
+    padding: '4px',
+  },
+  dirBtn: {
+    flex: 1,
+    fontFamily: fontStack,
+    fontSize: '8px',
+    letterSpacing: '2px',
+    padding: '8px 0',
+    border: 'none',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  dirBtnBuy: {
+    background: 'linear-gradient(135deg, #059669, #10b981)',
+    color: '#fff',
+    boxShadow: '0 0 12px rgba(16, 185, 129, 0.45)',
+  },
+  dirBtnSell: {
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    color: '#fff',
+    boxShadow: '0 0 12px rgba(219, 39, 119, 0.45)',
+  },
+  dirBtnInactive: {
+    background: 'transparent',
+    color: '#4c1d95',
+  },
+  // ── Header ─────────────────────────────────────────────────────────────────
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -585,6 +694,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '8px',
     letterSpacing: '1px',
   },
+  // ── Token boxes ────────────────────────────────────────────────────────────
   tokenBox: {
     background: 'rgba(88, 28, 135, 0.12)',
     border: '1px solid #4c1d95',
@@ -598,11 +708,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '6px',
+  },
+  youLabel: {
+    color: '#4c1d95',
+    fontSize: '6px',
+    letterSpacing: '1px',
   },
   tokenName: {
     color: '#c084fc',
     fontSize: '10px',
     letterSpacing: '1px',
+    display: 'flex',
+    alignItems: 'center',
   },
   balanceBtn: {
     background: 'transparent',
@@ -614,11 +732,13 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 6px',
     cursor: 'pointer',
     letterSpacing: '1px',
+    flexShrink: 0,
   },
   lockedTag: {
     color: '#6d28d9',
     fontSize: '8px',
     letterSpacing: '1px',
+    flexShrink: 0,
   },
   input: {
     background: 'transparent',
@@ -636,28 +756,17 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
   },
-  outputValue: {
-    color: '#f0abfc',
-  },
+  outputValue: { color: '#f0abfc' },
   quoting: {
     color: '#7c3aed',
     fontSize: '10px',
     animation: 'pulse 1s infinite',
     letterSpacing: '2px',
   },
-  placeholder: {
-    color: '#4c1d95',
-  },
-  noLiquidity: {
-    color: '#db2777',
-    fontSize: '10px',
-    letterSpacing: '1px',
-  },
-  arrowRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
+  placeholder: { color: '#4c1d95' },
+  noLiquidity: { color: '#db2777', fontSize: '10px', letterSpacing: '1px' },
+  // ── Arrow ──────────────────────────────────────────────────────────────────
+  arrowRow: { display: 'flex', alignItems: 'center', gap: '8px' },
   arrowLine: {
     flex: 1,
     height: '1px',
@@ -668,6 +777,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
     textShadow: '0 0 8px rgba(124, 58, 237, 0.8)',
   },
+  // ── Details ────────────────────────────────────────────────────────────────
   details: {
     background: 'rgba(15, 0, 30, 0.6)',
     border: '1px solid #3b0764',
@@ -696,6 +806,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'right',
     wordBreak: 'break-all',
   },
+  // ── Error / success ────────────────────────────────────────────────────────
   errorBox: {
     background: 'rgba(190, 18, 60, 0.12)',
     border: '1px solid #9f1239',
@@ -705,11 +816,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: '8px',
   },
-  errorText: {
-    color: '#fb7185',
-    fontSize: '9px',
-    letterSpacing: '1px',
-  },
+  errorText: { color: '#fb7185', fontSize: '9px', letterSpacing: '1px' },
   letsbonkLink: {
     color: '#e879f9',
     fontSize: '8px',
@@ -760,16 +867,8 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: '6px',
   },
-  slippageLabel: {
-    color: '#6d28d9',
-    fontSize: '6px',
-    letterSpacing: '1.5px',
-  },
-  slippagePills: {
-    display: 'flex',
-    gap: '6px',
-    flexWrap: 'wrap' as const,
-  },
+  slippageLabel: { color: '#6d28d9', fontSize: '6px', letterSpacing: '1.5px' },
+  slippagePills: { display: 'flex', gap: '6px', flexWrap: 'wrap' as const },
   slippagePill: {
     fontFamily: fontStack,
     fontSize: '6px',
@@ -811,11 +910,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '60px',
     caretColor: '#e879f9',
   },
-  customInputSuffix: {
-    color: '#7c3aed',
-    fontSize: '8px',
-    letterSpacing: '1px',
-  },
+  customInputSuffix: { color: '#7c3aed', fontSize: '8px', letterSpacing: '1px' },
   // ── Warnings ───────────────────────────────────────────────────────────────
   warnBox: {
     background: 'rgba(190, 18, 60, 0.1)',
@@ -826,16 +921,8 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: '5px',
   },
-  warnText: {
-    color: '#f472b6',
-    fontSize: '7px',
-    letterSpacing: '1px',
-  },
-  warnSub: {
-    color: '#9f1239',
-    fontSize: '6px',
-    letterSpacing: '0.5px',
-  },
+  warnText: { color: '#f472b6', fontSize: '7px', letterSpacing: '1px' },
+  warnSub: { color: '#9f1239', fontSize: '6px', letterSpacing: '0.5px' },
   // ── Swap button ────────────────────────────────────────────────────────────
   swapBtn: {
     fontFamily: fontStack,
@@ -860,6 +947,12 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)',
     cursor: 'pointer',
   },
+  swapBtnSell: {
+    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    color: '#fff',
+    boxShadow: '0 0 20px rgba(219, 39, 119, 0.45)',
+    cursor: 'pointer',
+  },
   swapBtnDisabled: {
     background: 'rgba(88, 28, 135, 0.2)',
     color: '#4c1d95',
@@ -871,12 +964,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'rgba(255,255,255,0.6)',
     cursor: 'not-allowed',
   },
+  // ── Footer ─────────────────────────────────────────────────────────────────
   footer: {
     color: '#4c1d95',
     fontSize: '7px',
     letterSpacing: '1px',
     textAlign: 'center',
   },
+  // ── Progress bar ───────────────────────────────────────────────────────────
   progressBox: {
     background: 'rgba(88, 28, 135, 0.12)',
     border: '1px solid #4c1d95',
@@ -891,11 +986,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  progressLabel: {
-    color: '#c084fc',
-    fontSize: '8px',
-    letterSpacing: '1px',
-  },
+  progressLabel: { color: '#c084fc', fontSize: '8px', letterSpacing: '1px' },
   progressPct: {
     color: '#e879f9',
     fontSize: '8px',

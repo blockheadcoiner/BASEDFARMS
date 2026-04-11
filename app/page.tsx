@@ -20,7 +20,7 @@ const TICKER: TickerEntry[] = [
   { kind: 'sep' },
   { kind: 'text', label: 'BASEDFARMS.fun' },
   { kind: 'sep' },
-  { kind: 'logo', symbol: '✦', symbolColor: '#19FB9B', label: 'POWERED BY JUPITER' },
+  { kind: 'logo', symbol: '✦', symbolColor: '#9945FF', label: 'POWERED BY RAYDIUM' },
   { kind: 'sep' },
   { kind: 'logo', symbol: '◎', symbolColor: '#9945FF', label: 'BUILT ON SOLANA' },
   { kind: 'sep' },
@@ -110,7 +110,7 @@ export default function HomePage() {
         <div style={styles.heroInner}>
           <div style={styles.heroBadge}>◈ SOLANA DEFI LAUNCHPAD</div>
 
-          <h1 style={styles.heroTitle} className="hero-gradient-text">
+          <h1 style={styles.heroTitle} className="hero-pink-neon">
             BASED<br />
             FARMS
           </h1>
@@ -254,7 +254,7 @@ export default function HomePage() {
         <div style={styles.footerLogo}>
           BASED<span style={{ color: '#e879f9' }}>FARMS</span>.fun
         </div>
-        <p style={styles.footerLine}>BUILT ON SOLANA · POWERED BY JUPITER · 0.3% SWAP FEE</p>
+        <p style={styles.footerLine}>BUILT ON SOLANA · POWERED BY RAYDIUM · 0.3% SWAP FEE</p>
         <p style={styles.footerLine}>NOT FINANCIAL ADVICE · DYOR · TRADE AT YOUR OWN RISK</p>
       </footer>
     </main>

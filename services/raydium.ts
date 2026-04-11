@@ -75,6 +75,7 @@ interface RaydiumQuoteResult {
 interface LaunchpadQuoteResult {
   mintA: string;
   programId: PublicKey;
+  direction: 'buy' | 'sell';
   amountIn: BN;
   amountOut: BN;
   minAmountOut: BN;
@@ -303,15 +304,19 @@ export async function executeRaydiumSwap(
  * @param slippageBps  User-selected slippage tolerance in basis points (default 500 = 5%).
  *                     minAmountOut adds a fixed 150 bps buffer on top to absorb the
  *                     ~1.5% protocol+platform fees that are deducted from the input.
+ * @param direction    'buy'  → SOL (amountRaw lamports) in, token out  (default)
+ *                     'sell' → token (amountRaw in token's native units) in, SOL out
  */
 export async function getLaunchpadQuote(
   mintA: string,
-  amountLamports: number,
+  amountRaw: number,
   slippageBps = 500,
+  direction: 'buy' | 'sell' = 'buy',
 ): Promise<NormalizedQuote> {
   console.log('[Raydium/Launchpad] getLaunchpadQuote (on-chain):', {
     mintA: mintA.slice(0, 8) + '…',
-    amountLamports,
+    amountRaw,
+    direction,
   });
 
   const connection = getConn();
@@ -348,23 +353,31 @@ export async function getLaunchpadQuote(
   // Fees (~1.5% total) are deducted from the input by the contract, so the
   // displayed amount is a slight overestimate. We add a fixed 150 bps fee
   // buffer on top of the user's slippage to ensure the tx doesn't fail.
-  const amountBN = new BN(amountLamports);
-  const outAmount = LaunchConstantProductCurve.buyExactIn({ poolInfo: pool, amount: amountBN });
+  const amountBN = new BN(amountRaw);
 
-  // BGM has 6 decimals (read from on-chain pool state, not hardcoded)
-  const outDecimals: number = pool.mintDecimalsA;
-  console.log('[Raydium/Launchpad] raw outAmount (before decimal conversion):', outAmount.toString(),
-    `| mintDecimalsA: ${outDecimals}`,
-    `| display value: ${(Number(outAmount.toString()) / Math.pow(10, outDecimals)).toFixed(outDecimals)} ${mintA.slice(0, 6)}…`);
+  // ── Curve computation — direction-aware ────────────────────────────────────
+  // buy:  SOL in → token out  (virtualB+realB as input reserve)
+  // sell: token in → SOL out  (virtualA−realA as input reserve)
+  const outAmount = direction === 'sell'
+    ? LaunchConstantProductCurve.sellExactIn({ poolInfo: pool, amount: amountBN })
+    : LaunchConstantProductCurve.buyExactIn({ poolInfo: pool, amount: amountBN });
 
-  // minAmountOut: user slippage + 150 bps fee buffer (covers ~1.5% protocol+platform fees)
+  // Decimals from on-chain pool state (mintDecimalsA = token, mintDecimalsB = SOL)
+  const inDecimals: number  = direction === 'sell' ? pool.mintDecimalsA : pool.mintDecimalsB;
+  const outDecimals: number = direction === 'sell' ? pool.mintDecimalsB : pool.mintDecimalsA;
+
+  console.log('[Raydium/Launchpad] raw outAmount:', outAmount.toString(),
+    `| direction: ${direction} | inDec: ${inDecimals} | outDec: ${outDecimals}`,
+    `| display: ${(Number(outAmount.toString()) / Math.pow(10, outDecimals)).toFixed(Math.min(outDecimals, 6))}`);
+
+  // minAmountOut: user slippage + 150 bps fee buffer (~1.5% protocol+platform fees)
   const FEE_BUFFER_BPS = 150;
   const totalBuffer = Math.min(slippageBps + FEE_BUFFER_BPS, 9_000); // cap at 90%
   const minOutAmount = outAmount.mul(new BN(10_000 - totalBuffer)).div(new BN(10_000));
 
-  // Price impact: compare actual output to ideal spot-price output
-  const inputReserve = pool.virtualB.add(pool.realB);
-  const outputReserve = pool.virtualA.sub(pool.realA);
+  // Price impact vs spot price
+  const inputReserve  = direction === 'sell' ? pool.virtualA.sub(pool.realA) : pool.virtualB.add(pool.realB);
+  const outputReserve = direction === 'sell' ? pool.virtualB.add(pool.realB) : pool.virtualA.sub(pool.realA);
   const fairOut = inputReserve.isZero()
     ? outAmount
     : amountBN.mul(outputReserve).div(inputReserve);
@@ -388,6 +401,7 @@ export async function getLaunchpadQuote(
   const raw: LaunchpadQuoteResult = {
     mintA,
     programId: LAUNCHPAD_PROGRAM,
+    direction,
     amountIn: amountBN,
     amountOut: outAmount,
     minAmountOut: minOutAmount,
@@ -399,6 +413,7 @@ export async function getLaunchpadQuote(
     subRouter: 'launchpad',
     outAmountRaw,
     minOutAmountRaw,
+    inDecimals,
     outDecimals,
     priceImpactPct,
     route: 'Raydium LaunchLab',
@@ -427,17 +442,28 @@ export async function executeLaunchpadSwap(
   const connection = getConn();
   const raydium = await loadRaydium(userPublicKey);
 
-  const txData = await raydium.launchpad.buyToken({
-    programId: r.programId,
-    mintA: new PublicKey(r.mintA),
-    buyAmount: r.amountIn,
-    minMintAAmount: r.minAmountOut,
-    txVersion: TxVersion.LEGACY,
-    computeBudgetConfig: {
-      units: 600_000,
-      microLamports: 100_000,
-    },
-  });
+  let txData: unknown;
+  if (r.direction === 'sell') {
+    console.log('[Raydium/Launchpad] calling sellToken | sellAmount=', r.amountIn.toString(), '| minAmountB=', r.minAmountOut.toString());
+    txData = await raydium.launchpad.sellToken({
+      programId: r.programId,
+      mintA: new PublicKey(r.mintA),
+      sellAmount: r.amountIn,
+      minAmountB: r.minAmountOut,
+      txVersion: TxVersion.LEGACY,
+      computeBudgetConfig: { units: 600_000, microLamports: 100_000 },
+    });
+  } else {
+    console.log('[Raydium/Launchpad] calling buyToken | buyAmount=', r.amountIn.toString(), '| minMintAAmount=', r.minAmountOut.toString());
+    txData = await raydium.launchpad.buyToken({
+      programId: r.programId,
+      mintA: new PublicKey(r.mintA),
+      buyAmount: r.amountIn,
+      minMintAAmount: r.minAmountOut,
+      txVersion: TxVersion.LEGACY,
+      computeBudgetConfig: { units: 600_000, microLamports: 100_000 },
+    });
+  }
 
   const { transaction, signers } = txData as { transaction: Transaction; signers: import('@solana/web3.js').Signer[] };
 
