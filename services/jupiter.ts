@@ -1,7 +1,11 @@
 import type { NormalizedQuote } from './types';
 
 export const PLATFORM_FEE_BPS = 30;
-export const JUPITER_API_BASE = 'https://quote-api.jup.ag/v6';
+// Use the Next.js proxy rewrite in the browser to avoid CORS; direct URL server-side.
+export const JUPITER_API_BASE =
+  typeof window !== 'undefined'
+    ? '/api/jupiter/v6'
+    : 'https://quote-api.jup.ag/v6';
 
 export interface QuoteResponse {
   inputMint: string;

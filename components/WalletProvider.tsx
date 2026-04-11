@@ -144,7 +144,9 @@ function InnerProvider({ children }: { children: React.ReactNode }) {
 
 /* ── Public provider ── */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const endpoint = process.env.NEXT_PUBLIC_RPC_URL ?? 'https://api.mainnet-beta.solana.com';
+  // Use the server-side RPC proxy so the Helius API key is never exposed client-side
+  // and env vars work reliably on Vercel (NEXT_PUBLIC_ vars require a rebuild to propagate).
+  const endpoint = '/api/rpc';
 
   // Phantom auto-registers via Wallet Standard — no explicit adapter needed.
   // Backpack and other standard wallets are also auto-detected.

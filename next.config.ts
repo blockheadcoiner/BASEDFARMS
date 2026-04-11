@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         source: '/api/raydium-v3/:path*',
         destination: 'https://api-v3.raydium.io/:path*',
       },
+      {
+        source: '/api/jupiter/:path*',
+        destination: 'https://quote-api.jup.ag/:path*',
+      },
     ];
   },
 };

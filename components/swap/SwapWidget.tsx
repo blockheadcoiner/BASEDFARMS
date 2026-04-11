@@ -25,6 +25,10 @@ const PLATFORM_FEE_PCT = (PLATFORM_FEE_BPS / 100).toFixed(1);
 // Tokens that use Raydium CPMM instead of Jupiter
 const RAYDIUM_TOKENS = new Set([BGM_MINT]);
 
+// Tokens whose Raydium pool lookup should be skipped entirely — go straight to Jupiter.
+// BGM launched on letsbonk.fun (different launchpad program), not Raydium LaunchLab.
+const SKIP_RAYDIUM_TOKENS = new Set([BGM_MINT]);
+
 // ── Types ────────────────────────────────────────────────────────────────────
 type SwapError =
   | 'POOL_NOT_FOUND'
@@ -121,7 +125,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     try {
       let result: NormalizedQuote;
 
-      if (useRaydium) {
+      if (useRaydium && !SKIP_RAYDIUM_TOKENS.has(tokenMint)) {
         // Priority: CPMM (graduated) → LaunchLab (bonding curve) → Jupiter
         try {
           result = await getRaydiumQuote(SOL_MINT, tokenMint, lamports);
