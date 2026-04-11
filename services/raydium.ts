@@ -35,9 +35,11 @@ if (typeof window !== 'undefined') {
 
 /* ── RPC connection ─────────────────────────────────────────────────────── */
 
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL
-  ?? 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
+const RPC_URL = (() => {
+  const url = process.env.NEXT_PUBLIC_RPC_URL;
+  if (url && url.startsWith('https://')) return url;
+  return 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
+})();
 
 console.log('[Raydium] RPC_URL:', RPC_URL);
 
