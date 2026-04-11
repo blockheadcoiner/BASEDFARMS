@@ -209,7 +209,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setSwapSummary(null);
 
     const solIn = inputAmount;
-    const tokenOut = formatAmount(quote.outAmountRaw);
+    const tokenOut = formatAmount(quote.outAmountRaw, quote.outDecimals ?? 9);
 
     try {
       let sig: string;
@@ -335,7 +335,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           ) : swapError === 'POOL_NOT_FOUND' || swapError === 'NO_LIQUIDITY' ? (
             <span style={styles.noLiquidity}>POOL COMING SOON</span>
           ) : quote ? (
-            <span style={styles.outputValue}>{formatAmount(quote.outAmountRaw)}</span>
+            <span style={styles.outputValue}>{formatAmount(quote.outAmountRaw, quote.outDecimals ?? 9)}</span>
           ) : (
             <span style={styles.placeholder}>—</span>
           )}
@@ -390,7 +390,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           )}
           <div style={styles.detailRow}>
             <span style={styles.detailKey}>MIN RECEIVED</span>
-            <span style={styles.detailValue}>{formatAmount(quote.minOutAmountRaw)}</span>
+            <span style={styles.detailValue}>{formatAmount(quote.minOutAmountRaw, quote.outDecimals ?? 9)}</span>
           </div>
         </div>
       )}

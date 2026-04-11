@@ -351,6 +351,12 @@ export async function getLaunchpadQuote(
   const amountBN = new BN(amountLamports);
   const outAmount = LaunchConstantProductCurve.buyExactIn({ poolInfo: pool, amount: amountBN });
 
+  // BGM has 6 decimals (read from on-chain pool state, not hardcoded)
+  const outDecimals: number = pool.mintDecimalsA;
+  console.log('[Raydium/Launchpad] raw outAmount (before decimal conversion):', outAmount.toString(),
+    `| mintDecimalsA: ${outDecimals}`,
+    `| display value: ${(Number(outAmount.toString()) / Math.pow(10, outDecimals)).toFixed(outDecimals)} ${mintA.slice(0, 6)}…`);
+
   // minAmountOut: user slippage + 150 bps fee buffer (covers ~1.5% protocol+platform fees)
   const FEE_BUFFER_BPS = 150;
   const totalBuffer = Math.min(slippageBps + FEE_BUFFER_BPS, 9_000); // cap at 90%
@@ -393,6 +399,7 @@ export async function getLaunchpadQuote(
     subRouter: 'launchpad',
     outAmountRaw,
     minOutAmountRaw,
+    outDecimals,
     priceImpactPct,
     route: 'Raydium LaunchLab',
     platformFeeSol: null,

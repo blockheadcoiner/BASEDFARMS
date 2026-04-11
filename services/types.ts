@@ -11,6 +11,8 @@ export interface NormalizedQuote {
   outAmountRaw: string;
   /** Minimum output after slippage, native units */
   minOutAmountRaw: string;
+  /** Decimal places of the output token (e.g. 6 for BGM, 9 for SOL). Used for display. */
+  outDecimals?: number;
   /** Price impact as a decimal percentage string e.g. "0.1200" */
   priceImpactPct: string;
   /** Human-readable route label */
