@@ -49,6 +49,18 @@ export const LAUNCH_FEE_LAMPORTS = Math.round(0.1 * LAMPORTS_PER_SOL);
 const CURVE_TYPE = 0;
 const CONFIG_INDEX = 0;
 
+/**
+ * BASEDFARMS platform ID — set via NEXT_PUBLIC_PLATFORM_ID env var.
+ * Created once with the admin wallet via app/admin. When set, every
+ * createLaunchpad() call registers the pool under the BASEDFARMS platform,
+ * routing LP fees and Fee Key NFTs to the platform wallets at graduation.
+ */
+function getPlatformId(): PublicKey | undefined {
+  const id = process.env.NEXT_PUBLIC_PLATFORM_ID;
+  if (!id) return undefined;
+  try { return new PublicKey(id); } catch { return undefined; }
+}
+
 /* ── RPC ──────────────────────────────────────────────────────────────────── */
 
 const RPC_URL = (() => {
@@ -231,6 +243,13 @@ export async function createToken(
 
   // ── Build the launchpad transaction(s) ────────────────────────────────────
   console.log('[Launch] calling raydium.launchpad.createLaunchpad...');
+  const platformId = getPlatformId();
+  if (platformId) {
+    console.log('[Launch] using platformId:', platformId.toBase58());
+  } else {
+    console.warn('[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config');
+  }
+
   const result = await raydium.launchpad.createLaunchpad({
     programId: LAUNCHPAD_PROGRAM,
     mintA: mintKeypair.publicKey,
@@ -240,6 +259,7 @@ export async function createToken(
     decimals: params.decimals,
     configId,
     configInfo,
+    ...(platformId ? { platformId } : {}),
     migrateType: 'cpmm',
     supply: supplyRaw,
     totalSellA,
