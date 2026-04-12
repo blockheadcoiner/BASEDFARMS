@@ -252,8 +252,11 @@ export async function createToken(
 
   // ── Build the launchpad transaction(s) ────────────────────────────────────
   console.log('[Launch] calling raydium.launchpad.createLaunchpad...');
-  const platformId = getPlatformId();
-  if (platformId) {
+  // Platform ID is mainnet-only — devnet has no registered platform config.
+  const platformId = IS_DEVNET ? undefined : getPlatformId();
+  if (IS_DEVNET) {
+    console.log('[Launch] devnet mode — skipping platformId');
+  } else if (platformId) {
     console.log('[Launch] using platformId:', platformId.toBase58());
   } else {
     console.warn('[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config');
