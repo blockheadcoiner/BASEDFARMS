@@ -31,6 +31,34 @@ function useMobile(): boolean {
   return mobile;
 }
 
+/* ── Animated score counter ──────────────────────────────────────────────── */
+
+function useAnimatedScore(target: number): number {
+  const [displayed, setDisplayed] = useState(0);
+  const rafRef = useRef<number>(0);
+  const fromRef = useRef(0);
+
+  useEffect(() => {
+    cancelAnimationFrame(rafRef.current);
+    const start = fromRef.current;
+    const end = target;
+    if (start === end) return;
+    const duration = 500;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplayed(Math.round(start + (end - start) * eased));
+      if (p < 1) { rafRef.current = requestAnimationFrame(tick); }
+      else { fromRef.current = end; }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target]);
+
+  return displayed;
+}
+
 /* ── Form state ───────────────────────────────────────────────────────────── */
 
 interface FormState {
@@ -215,6 +243,91 @@ function Toggle({
 
 /* ── Based Score Panel ────────────────────────────────────────────────────── */
 
+/** Tier config keyed by rawTotal threshold (descending) */
+const TIERS: { min: number; label: string; color: string }[] = [
+  { min: 101, label: 'MAXIMUM BASED 🔥', color: '#f59e0b' },
+  { min: 90,  label: 'ULTRA BASED',      color: '#06b6d4' },
+  { min: 75,  label: 'BASED',            color: '#22c55e' },
+  { min: 50,  label: 'SOMEWHAT BASED',   color: '#eab308' },
+  { min: 25,  label: 'QUESTIONABLE',     color: '#f97316' },
+  { min: 0,   label: 'NOT BASED',        color: '#ef4444' },
+];
+
+function getTier(rawTotal: number) {
+  return TIERS.find((t) => rawTotal >= t.min) ?? TIERS[TIERS.length - 1];
+}
+
+const SCORE_CATEGORIES = ['BASICS', 'SUPPLY', 'CURVE & FUNDRAISE', 'ADVANCED'] as const;
+
+/** The Based Points section — gold-themed, shown below the score items */
+function BasedPointsSection() {
+  return (
+    <div style={s.basedPointsPanel}>
+      <div style={s.basedPointsTitle}>◈ BASED POINTS</div>
+      <div style={s.basedPointsRows}>
+        {[
+          { icon: '◎', event: 'LAUNCH TOKEN',   pts: '+1,000' },
+          { icon: '▲', event: 'GRADUATION',      pts: '+10,000' },
+          { icon: '⬡', event: 'PER $100 VOLUME', pts: '+10' },
+        ].map(({ icon, event, pts }) => (
+          <div key={event} style={s.basedPointsRow}>
+            <span style={s.basedPointsIcon}>{icon}</span>
+            <span style={s.basedPointsEvent}>{event}</span>
+            <span style={s.basedPointsValue}>{pts}</span>
+          </div>
+        ))}
+      </div>
+      <div style={s.basedPointsHint}>Based Points may qualify for future rewards</div>
+      <div style={s.basedPointsHint}>Points tracked on-chain at graduation</div>
+    </div>
+  );
+}
+
+function ScoreItemsList({
+  items,
+  scoreColor,
+}: {
+  items: ReturnType<typeof calcBasedScore>['items'];
+  scoreColor: string;
+}) {
+  return (
+    <div style={s.scoreItems}>
+      {SCORE_CATEGORIES.map((cat) => {
+        const catItems = items.filter((i) => i.category === cat);
+        if (!catItems.length) return null;
+        return (
+          <div key={cat}>
+            <div style={s.scoreCategory}>{cat}</div>
+            {catItems.map((item) => (
+              <div key={item.label} style={s.scoreItem}>
+                <span style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '8px', flexShrink: 0 }}>
+                  {item.earned ? '✓' : '○'}
+                </span>
+                <span style={{ ...s.scoreItemLabel, color: item.earned ? '#c084fc' : '#4c1d95' }}>
+                  {item.label}
+                </span>
+                <span style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : '#3b0764' }}>
+                  +{item.pts}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {/* Based bonus rows — gold accent */}
+      {items
+        .filter((i) => i.bonus)
+        .map((item) => (
+          <div key={item.label} style={{ ...s.scoreItem, ...s.basedBonusRow }}>
+            <span style={{ color: '#f59e0b', fontSize: '8px', flexShrink: 0 }}>✦</span>
+            <span style={{ ...s.scoreItemLabel, color: '#fbbf24' }}>{item.label}</span>
+            <span style={{ ...s.scoreItemPts, color: '#f59e0b' }}>+{item.pts}</span>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function BasedScorePanel({
   form,
   touched,
@@ -229,44 +342,24 @@ function BasedScorePanel({
   onToggle: () => void;
 }) {
   const scoreParams: Partial<LaunchParams> & { imageDataUri?: string } = {
+    name: form.tokenName,
+    symbol: form.tokenSymbol,
     vestingEnabled: form.vestingEnabled,
     supply: form.supply,
     curvePercent: form.curvePercent,
     targetSol: form.targetSol,
     creatorFeeOn: form.creatorFeeOn,
-    initialBuyLamports: form.initialBuyEnabled
-      ? Math.round(form.initialBuySol * LAMPORTS_PER_SOL)
-      : 0,
     imageDataUri: form.imageDataUri,
-    description: form.description,
-    symbol: form.tokenSymbol,
   };
 
-  const { total, items } = calcBasedScore(scoreParams, touched);
+  const { total, rawTotal, hasBasedBonus, basedBonusPts, items } = calcBasedScore(scoreParams, touched);
+  const { label: tierLabel, color: tierColor } = getTier(rawTotal);
+  const displayedScore = useAnimatedScore(total);
 
-  const scoreColor =
-    total >= 80
-      ? '#22c55e'
-      : total >= 60
-      ? '#eab308'
-      : total >= 40
-      ? '#f97316'
-      : '#ef4444';
-
-  const tier =
-    total >= 80
-      ? '🔥 EXTREMELY BASED'
-      : total >= 60
-      ? '✦ BASED'
-      : total >= 40
-      ? '◎ FAIR'
-      : '⚠ DEGEN';
-
-  // On mobile: compact header is always visible; breakdown is collapsible
+  // On mobile: compact header always visible; breakdown collapsible
   if (isMobile) {
     return (
       <div style={s.scorePanelMobile}>
-        {/* Tappable header — always visible */}
         <div
           style={s.scoreMobileHeader}
           onClick={onToggle}
@@ -277,52 +370,24 @@ function BasedScorePanel({
         >
           <span style={s.scorePanelTitle}>◈ BASED SCORE</span>
           <div style={s.scoreMobileSummary}>
-            <span style={{ ...s.scoreMobileNumber, color: scoreColor }}>{total}</span>
-            <span style={{ ...s.scoreMobileTier, color: scoreColor }}>{tier}</span>
+            <span style={{ ...s.scoreMobileNumber, color: tierColor }}>{displayedScore}</span>
+            <span style={{ ...s.scoreMobileTier, color: tierColor }}>{tierLabel}</span>
             <span style={s.scoreExpandIcon}>{expanded ? '▲' : '▼'}</span>
           </div>
         </div>
 
-        {/* Score bar — always visible */}
         <div style={s.scoreBarTrack}>
-          <div
-            style={{
-              ...s.scoreBarFill,
-              width: `${total}%`,
-              background: scoreColor,
-              boxShadow: `0 0 6px ${scoreColor}`,
-            }}
-          />
+          <div style={{ ...s.scoreBarFill, width: `${total}%`, background: tierColor, boxShadow: `0 0 6px ${tierColor}` }} />
         </div>
 
-        {/* Expandable breakdown */}
+        {hasBasedBonus && (
+          <div style={s.basedBonusBadge}>✦ BASED BONUS! 🔥 +{basedBonusPts}</div>
+        )}
+
         {expanded && (
           <div style={s.scoreMobileBreakdown}>
-            {items.map((item) => (
-              <div key={item.label} style={s.scoreItem}>
-                <span
-                  style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '9px' }}
-                >
-                  {item.earned ? '✓' : '○'}
-                </span>
-                <span
-                  style={{
-                    ...s.scoreItemLabel,
-                    color: item.earned ? '#c084fc' : '#4c1d95',
-                  }}
-                >
-                  {item.label}
-                </span>
-                <span
-                  style={{
-                    ...s.scoreItemPts,
-                    color: item.earned ? scoreColor : '#3b0764',
-                  }}
-                >
-                  +{item.pts}
-                </span>
-              </div>
-            ))}
+            <ScoreItemsList items={items} scoreColor={tierColor} />
+            <BasedPointsSection />
           </div>
         )}
       </div>
@@ -335,47 +400,24 @@ function BasedScorePanel({
       <div style={s.scorePanelTitle}>◈ BASED SCORE</div>
 
       <div style={s.scoreCircle}>
-        <span style={{ ...s.scoreNumber, color: scoreColor }}>{total}</span>
+        <span style={{ ...s.scoreNumber, color: tierColor }}>{displayedScore}</span>
         <span style={s.scoreMax}>/100</span>
       </div>
 
       <div style={s.scoreBarTrack}>
-        <div
-          style={{
-            ...s.scoreBarFill,
-            width: `${total}%`,
-            background: scoreColor,
-            boxShadow: `0 0 8px ${scoreColor}`,
-          }}
-        />
+        <div style={{ ...s.scoreBarFill, width: `${total}%`, background: tierColor, boxShadow: `0 0 8px ${tierColor}` }} />
       </div>
 
-      <div style={s.scoreLabel}>{tier}</div>
+      {hasBasedBonus && (
+        <div style={s.basedBonusBadge}>✦ BASED BONUS! 🔥 +{basedBonusPts}</div>
+      )}
 
-      <div style={s.scoreItems}>
-        {items.map((item) => (
-          <div key={item.label} style={s.scoreItem}>
-            <span
-              style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '9px' }}
-            >
-              {item.earned ? '✓' : '○'}
-            </span>
-            <span
-              style={{
-                ...s.scoreItemLabel,
-                color: item.earned ? '#c084fc' : '#4c1d95',
-              }}
-            >
-              {item.label}
-            </span>
-            <span
-              style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : '#3b0764' }}
-            >
-              +{item.pts}
-            </span>
-          </div>
-        ))}
-      </div>
+      <div style={{ ...s.scoreLabel, color: tierColor }}>{tierLabel}</div>
+
+      <ScoreItemsList items={items} scoreColor={tierColor} />
+
+      <div style={s.scoreDivider} />
+      <BasedPointsSection />
     </div>
   );
 }
@@ -687,7 +729,7 @@ function Step3({
         <Toggle
           checked={form.vestingEnabled}
           onChange={(v) => { setForm((f) => ({ ...f, vestingEnabled: v })); onTouch('vestingEnabled'); }}
-          label="VESTING (+20 BASED SCORE)"
+          label="VESTING"
         />
         {form.vestingEnabled && (
           <div style={toggleContentStyle}>
@@ -752,7 +794,6 @@ function Step3({
           checked={form.initialBuyEnabled}
           onChange={(v) => {
             setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }));
-            onTouch('initialBuy');
           }}
           label="INITIAL BUY AT LAUNCH"
         />
@@ -775,7 +816,7 @@ function Step3({
                 <span style={s.estimateValue}>≈ {fmtNumber(estimatedTokens)}</span>
               </div>
             )}
-            <Hint>⚠ Large initial buys reduce based score. Keep it under 1 SOL.</Hint>
+            <Hint>⚠ Large initial buys signal insider accumulation — keep it modest.</Hint>
           </div>
         )}
       </div>
@@ -2023,6 +2064,89 @@ const s: Record<string, React.CSSProperties> = {
     marginTop: '10px',
     paddingTop: '10px',
     borderTop: '1px solid #1e0035',
+  },
+  scoreCategory: {
+    fontFamily: font,
+    fontSize: '5px',
+    letterSpacing: '2px',
+    color: '#4c1d95',
+    marginTop: '10px',
+    marginBottom: '5px',
+    textTransform: 'uppercase' as const,
+  },
+  basedBonusRow: {
+    marginTop: '4px',
+    padding: '5px 7px',
+    background: 'rgba(245, 158, 11, 0.07)',
+    borderRadius: '5px',
+    border: '1px solid rgba(245, 158, 11, 0.2)',
+  },
+  basedBonusBadge: {
+    fontFamily: font,
+    fontSize: '7px',
+    letterSpacing: '1px',
+    color: '#f59e0b',
+    textShadow: '0 0 10px rgba(245, 158, 11, 0.6)',
+    textAlign: 'center' as const,
+    margin: '6px 0 4px',
+    animation: 'pulse 1.5s ease-in-out infinite',
+  },
+  scoreDivider: {
+    height: '1px',
+    background: 'linear-gradient(90deg, transparent, #3b0764, transparent)',
+    margin: '14px 0',
+  },
+  // Based Points section
+  basedPointsPanel: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '6px',
+  },
+  basedPointsTitle: {
+    fontFamily: font,
+    fontSize: '7px',
+    letterSpacing: '2px',
+    color: '#f59e0b',
+    textShadow: '0 0 8px rgba(245, 158, 11, 0.4)',
+    marginBottom: '4px',
+  },
+  basedPointsRows: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '5px',
+  },
+  basedPointsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+  },
+  basedPointsIcon: {
+    fontFamily: font,
+    fontSize: '8px',
+    color: '#78350f',
+    flexShrink: 0,
+  },
+  basedPointsEvent: {
+    fontFamily: font,
+    fontSize: '6px',
+    letterSpacing: '0.5px',
+    color: '#92400e',
+    flex: 1,
+  },
+  basedPointsValue: {
+    fontFamily: font,
+    fontSize: '7px',
+    color: '#f59e0b',
+    letterSpacing: '1px',
+    flexShrink: 0,
+  },
+  basedPointsHint: {
+    fontFamily: font,
+    fontSize: '5px',
+    letterSpacing: '0.3px',
+    color: '#78350f',
+    lineHeight: 1.6,
+    fontStyle: 'italic' as const,
   },
   // Footer
   footer: {

@@ -321,21 +321,35 @@ export async function createToken(
 /* ── Based Score calculator ───────────────────────────────────────────────── */
 
 export interface BasedScoreBreakdown {
+  /** Displayed score, capped at 100 */
   total: number;
-  items: { label: string; pts: number; earned: boolean }[];
+  /** Raw score before cap — may exceed 100 when based bonus applies */
+  rawTotal: number;
+  /** True when at least one of name/symbol contains "based" (case-insensitive) */
+  hasBasedBonus: boolean;
+  /** Actual based bonus points earned: 0, 10, or 25 */
+  basedBonusPts: number;
+  items: {
+    label: string;
+    pts: number;
+    earned: boolean;
+    /** Grouping header shown in the score panel */
+    category: string;
+    /** True for based-bonus rows — rendered with gold accent */
+    bonus?: boolean;
+  }[];
 }
 
 /**
  * Keys that must appear in `touched` before their criterion can be earned.
- * Image / description / symbol infer "touched" from the value itself.
+ * name / symbol / image infer "touched" from the value itself.
  */
 export type ScoreTouchedKey =
   | 'vestingEnabled'
   | 'supply'
   | 'curvePercent'
   | 'targetSol'
-  | 'creatorFeeOn'
-  | 'initialBuy';
+  | 'creatorFeeOn';
 
 export function calcBasedScore(
   params: Partial<LaunchParams> & { imageDataUri?: string },
@@ -343,81 +357,80 @@ export function calcBasedScore(
 ): BasedScoreBreakdown {
   const t = (key: ScoreTouchedKey) => touched.has(key);
 
-  const items: { label: string; pts: number; earned: boolean }[] = [
-    {
-      label: 'Vesting enabled',
-      pts: 20,
-      // Only after the user explicitly toggles vesting on
-      earned: t('vestingEnabled') && !!params.vestingEnabled,
-    },
-    {
-      label: 'Fair curve (≥ 79% sold on curve)',
-      pts: 20,
-      // Only after the user moves the slider
-      earned: t('curvePercent') && (params.curvePercent ?? 0) >= 79,
-    },
-    {
-      label: 'Decent curve (≥ 65% sold on curve)',
-      pts: 10,
-      earned: t('curvePercent') && (params.curvePercent ?? 0) >= 65 && (params.curvePercent ?? 0) < 79,
-    },
-    {
-      label: 'Solid fundraise target (≥ 50 SOL)',
-      pts: 15,
-      // Only after the user edits the target field
-      earned: t('targetSol') && (params.targetSol ?? 0) >= 50,
-    },
-    {
-      label: 'Supply ≤ 1 billion',
-      pts: 10,
-      // Only after the user edits the supply field
-      earned: t('supply') && (params.supply ?? 0) > 0 && (params.supply ?? 0) <= 1_000_000_000,
-    },
-    {
-      label: 'Creator fees on SOL only',
-      pts: 10,
-      // Only after the user clicks a creator fee option in step 3
-      earned: t('creatorFeeOn') && params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB,
-    },
-    {
-      label: 'Conservative initial buy (≤ 1 SOL)',
-      pts: 10,
-      // Only after the user enables the initial buy toggle AND keeps it ≤ 1 SOL
-      earned: t('initialBuy') && (params.initialBuyLamports ?? 0) <= LAMPORTS_PER_SOL,
-    },
-    {
-      label: 'Token image uploaded',
-      pts: 5,
-      // Presence of the image IS the touch signal
-      earned: !!(params.imageDataUri),
-    },
-    {
-      label: 'Description provided',
-      pts: 5,
-      // Typing >10 chars IS the touch signal
-      earned: (params.description?.trim().length ?? 0) > 10,
-    },
-    {
-      label: 'Symbol ≤ 6 characters',
-      pts: 5,
-      // Typing anything IS the touch signal; must be ≤ 6 chars
-      earned: (params.symbol?.length ?? 0) > 0 && (params.symbol?.length ?? 0) <= 6,
-    },
+  /* ── BASICS (30 pts) — value presence is the touch signal ── */
+  const hasName   = (params.name?.trim().length ?? 0) > 0;
+  const hasSymbol = (params.symbol?.trim().length ?? 0) > 0;
+  const hasImage  = !!(params.imageDataUri);
+
+  /* ── BASED BONUS (up to +25 extra) ── */
+  const nameHasBased   = /based/i.test(params.name ?? '');
+  const symbolHasBased = /based/i.test(params.symbol ?? '');
+  const bothBased      = nameHasBased && symbolHasBased;
+  const eitherBased    = nameHasBased || symbolHasBased;
+  const basedBonusPts  = bothBased ? 25 : eitherBased ? 10 : 0;
+
+  /* ── SUPPLY (up to 10 pts) — mutually exclusive tiers ── */
+  const supply = params.supply ?? 0;
+  const supplyLabel =
+    supply === 10_000          ? 'Supply = 10,000 (perfect)'
+    : supply <= 1_000_000      ? 'Supply ≤ 1,000,000'
+    : supply <= 1_000_000_000  ? 'Supply ≤ 1 billion'
+    : 'Supply (no tier match)';
+  const supplyItemPts =
+    supply === 10_000          ? 10
+    : supply <= 1_000_000      ? 5
+    : supply <= 1_000_000_000  ? 3
+    : 0;
+  const supplyEarned = t('supply') && supplyItemPts > 0;
+
+  /* ── CURVE & FUNDRAISE (up to 30 pts) ── */
+  const curve = params.curvePercent ?? 0;
+  // Show the best currently-applicable curve tier as a single item
+  const curveItemLabel = curve >= 79 ? 'Curve ≥ 79% sold on curve' : 'Curve ≥ 65% sold on curve';
+  const curveItemPts   = curve >= 79 ? 20 : 10;
+  const curveEarned    = curve >= 79
+    ? t('curvePercent') && curve >= 79
+    : t('curvePercent') && curve >= 65;
+
+  const targetEarned = t('targetSol') && (params.targetSol ?? 0) >= 50;
+
+  /* ── ADVANCED (30 pts) ── */
+  const vestingEarned  = t('vestingEnabled') && !!params.vestingEnabled;
+  const creatorEarned  = t('creatorFeeOn') && params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB;
+
+  /* ── Build items array ── */
+  const items: BasedScoreBreakdown['items'] = [
+    { label: 'Token name provided',   pts: 10, earned: hasName,   category: 'BASICS' },
+    { label: 'Token symbol provided', pts: 10, earned: hasSymbol, category: 'BASICS' },
+    { label: 'Token image uploaded',  pts: 10, earned: hasImage,  category: 'BASICS' },
+    { label: supplyLabel,             pts: supplyItemPts, earned: supplyEarned, category: 'SUPPLY' },
+    { label: curveItemLabel,          pts: curveItemPts,  earned: curveEarned,  category: 'CURVE & FUNDRAISE' },
+    { label: 'SOL target ≥ 50 SOL',  pts: 10, earned: targetEarned, category: 'CURVE & FUNDRAISE' },
+    { label: 'Vesting enabled',       pts: 20, earned: vestingEarned, category: 'ADVANCED' },
+    { label: 'Creator fees: SOL only',pts: 10, earned: creatorEarned, category: 'ADVANCED' },
   ];
 
-  // Fair curve and decent curve are mutually exclusive — fair wins
-  const fairEarned = items.find((i) => i.label.startsWith('Fair curve'))?.earned;
-  if (fairEarned) {
-    const decentIdx = items.findIndex((i) => i.label.startsWith('Decent'));
-    if (decentIdx !== -1) items[decentIdx].earned = false;
+  if (eitherBased) {
+    const bonusLabel = bothBased
+      ? 'Name & symbol both contain "based"'
+      : nameHasBased
+      ? 'Name contains "based"'
+      : 'Symbol contains "based"';
+    items.push({ label: bonusLabel, pts: basedBonusPts, earned: true, category: 'BASED BONUS', bonus: true });
   }
 
-  const total = Math.min(
-    100,
-    items.reduce((sum, i) => sum + (i.earned ? i.pts : 0), 0),
-  );
+  /* ── Totals ── */
+  const baseScore = (hasName ? 10 : 0) + (hasSymbol ? 10 : 0) + (hasImage ? 10 : 0)
+    + (supplyEarned ? supplyItemPts : 0)
+    + (curveEarned ? curveItemPts : 0)
+    + (targetEarned ? 10 : 0)
+    + (vestingEarned ? 20 : 0)
+    + (creatorEarned ? 10 : 0);
 
-  return { total, items };
+  const rawTotal = baseScore + basedBonusPts;
+  const total    = Math.min(100, rawTotal);
+
+  return { total, rawTotal, hasBasedBonus: eitherBased, basedBonusPts, items };
 }
 
 /* ── Re-export SDK enum for consumers ────────────────────────────────────── */
