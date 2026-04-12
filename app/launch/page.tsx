@@ -16,20 +16,31 @@ import { useWalletModal } from '@/components/WalletProvider';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
 
+/* ── Responsive hook ──────────────────────────────────────────────────────── */
+
+function useMobile(): boolean {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return mobile;
+}
+
 /* ── Form state ───────────────────────────────────────────────────────────── */
 
 interface FormState {
-  // Step 1
   tokenName: string;
   tokenSymbol: string;
   description: string;
   imageDataUri: string;
   decimals: 6 | 9;
-  // Step 2
   supply: number;
   curvePercent: number;
   targetSol: number;
-  // Step 3
   token2022: boolean;
   transferFeeBps: number;
   maxTransferFeeTokens: number;
@@ -72,22 +83,37 @@ function fmtNumber(n: number): string {
   return n.toLocaleString();
 }
 
-/* ── Sub-components ───────────────────────────────────────────────────────── */
+/* ── Shared micro-components ──────────────────────────────────────────────── */
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({
+  children,
+  style,
+  isMobile,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  isMobile?: boolean;
+}) {
   return (
-    <div style={{ ...styles.card, ...style }}>
+    <div
+      style={{
+        ...s.card,
+        padding: isMobile ? '16px' : '24px',
+        borderRadius: isMobile ? '10px' : '14px',
+        ...style,
+      }}
+    >
       {children}
     </div>
   );
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div style={styles.label}>{children}</div>;
+  return <div style={s.label}>{children}</div>;
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <div style={styles.hint}>{children}</div>;
+  return <div style={s.hint}>{children}</div>;
 }
 
 function TextInput({
@@ -105,7 +131,7 @@ function TextInput({
 }) {
   return (
     <input
-      style={{ ...styles.input, ...(disabled ? styles.inputDisabled : {}) }}
+      style={{ ...s.input, ...(disabled ? s.inputDisabled : {}) }}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -133,7 +159,7 @@ function NumberInput({
   return (
     <input
       type="number"
-      style={{ ...styles.input, ...(disabled ? styles.inputDisabled : {}) }}
+      style={{ ...s.input, ...(disabled ? s.inputDisabled : {}) }}
       value={value}
       onChange={(e) => {
         const v = parseFloat(e.target.value);
@@ -158,31 +184,56 @@ function Toggle({
 }) {
   return (
     <div
-      style={styles.toggleRow}
+      style={s.toggleRow}
       onClick={() => onChange(!checked)}
       role="switch"
       aria-checked={checked}
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onChange(!checked); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onChange(!checked);
+      }}
     >
-      <div style={{ ...styles.toggleTrack, background: checked ? '#db2777' : '#1e0035' }}>
-        <div style={{ ...styles.toggleThumb, transform: checked ? 'translateX(20px)' : 'translateX(0)' }} />
+      <div
+        style={{
+          ...s.toggleTrack,
+          background: checked ? '#db2777' : '#1e0035',
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            ...s.toggleThumb,
+            transform: checked ? 'translateX(20px)' : 'translateX(0)',
+          }}
+        />
       </div>
-      <span style={styles.toggleLabel}>{label}</span>
+      <span style={s.toggleLabel}>{label}</span>
     </div>
   );
 }
 
-/* ── Based Score Widget ───────────────────────────────────────────────────── */
+/* ── Based Score Panel ────────────────────────────────────────────────────── */
 
-function BasedScorePanel({ form }: { form: FormState }) {
+function BasedScorePanel({
+  form,
+  isMobile,
+  expanded,
+  onToggle,
+}: {
+  form: FormState;
+  isMobile: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const scoreParams: Partial<LaunchParams> & { imageDataUri?: string } = {
     vestingEnabled: form.vestingEnabled,
     supply: form.supply,
     curvePercent: form.curvePercent,
     targetSol: form.targetSol,
     creatorFeeOn: form.creatorFeeOn,
-    initialBuyLamports: form.initialBuyEnabled ? Math.round(form.initialBuySol * LAMPORTS_PER_SOL) : 0,
+    initialBuyLamports: form.initialBuyEnabled
+      ? Math.round(form.initialBuySol * LAMPORTS_PER_SOL)
+      : 0,
     imageDataUri: form.imageDataUri,
     description: form.description,
     symbol: form.tokenSymbol,
@@ -191,26 +242,104 @@ function BasedScorePanel({ form }: { form: FormState }) {
   const { total, items } = calcBasedScore(scoreParams);
 
   const scoreColor =
-    total >= 80 ? '#22c55e' :
-    total >= 60 ? '#eab308' :
-    total >= 40 ? '#f97316' :
-    '#ef4444';
+    total >= 80
+      ? '#22c55e'
+      : total >= 60
+      ? '#eab308'
+      : total >= 40
+      ? '#f97316'
+      : '#ef4444';
 
+  const tier =
+    total >= 80
+      ? '🔥 EXTREMELY BASED'
+      : total >= 60
+      ? '✦ BASED'
+      : total >= 40
+      ? '◎ FAIR'
+      : '⚠ DEGEN';
+
+  // On mobile: compact header is always visible; breakdown is collapsible
+  if (isMobile) {
+    return (
+      <div style={s.scorePanelMobile}>
+        {/* Tappable header — always visible */}
+        <div
+          style={s.scoreMobileHeader}
+          onClick={onToggle}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(); }}
+          aria-expanded={expanded}
+        >
+          <span style={s.scorePanelTitle}>◈ BASED SCORE</span>
+          <div style={s.scoreMobileSummary}>
+            <span style={{ ...s.scoreMobileNumber, color: scoreColor }}>{total}</span>
+            <span style={{ ...s.scoreMobileTier, color: scoreColor }}>{tier}</span>
+            <span style={s.scoreExpandIcon}>{expanded ? '▲' : '▼'}</span>
+          </div>
+        </div>
+
+        {/* Score bar — always visible */}
+        <div style={s.scoreBarTrack}>
+          <div
+            style={{
+              ...s.scoreBarFill,
+              width: `${total}%`,
+              background: scoreColor,
+              boxShadow: `0 0 6px ${scoreColor}`,
+            }}
+          />
+        </div>
+
+        {/* Expandable breakdown */}
+        {expanded && (
+          <div style={s.scoreMobileBreakdown}>
+            {items.map((item) => (
+              <div key={item.label} style={s.scoreItem}>
+                <span
+                  style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '9px' }}
+                >
+                  {item.earned ? '✓' : '○'}
+                </span>
+                <span
+                  style={{
+                    ...s.scoreItemLabel,
+                    color: item.earned ? '#c084fc' : '#4c1d95',
+                  }}
+                >
+                  {item.label}
+                </span>
+                <span
+                  style={{
+                    ...s.scoreItemPts,
+                    color: item.earned ? scoreColor : '#3b0764',
+                  }}
+                >
+                  +{item.pts}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Desktop: full panel, no toggle
   return (
-    <div style={styles.scorePanel}>
-      <div style={styles.scorePanelTitle}>◈ BASED SCORE</div>
+    <div style={s.scorePanel}>
+      <div style={s.scorePanelTitle}>◈ BASED SCORE</div>
 
-      {/* Arc-style score display */}
-      <div style={styles.scoreCircle}>
-        <span style={{ ...styles.scoreNumber, color: scoreColor }}>{total}</span>
-        <span style={styles.scoreMax}>/100</span>
+      <div style={s.scoreCircle}>
+        <span style={{ ...s.scoreNumber, color: scoreColor }}>{total}</span>
+        <span style={s.scoreMax}>/100</span>
       </div>
 
-      {/* Bar */}
-      <div style={styles.scoreBarTrack}>
+      <div style={s.scoreBarTrack}>
         <div
           style={{
-            ...styles.scoreBarFill,
+            ...s.scoreBarFill,
             width: `${total}%`,
             background: scoreColor,
             boxShadow: `0 0 8px ${scoreColor}`,
@@ -218,27 +347,27 @@ function BasedScorePanel({ form }: { form: FormState }) {
         />
       </div>
 
-      <div style={styles.scoreLabel}>
-        {total >= 80 ? '🔥 EXTREMELY BASED' :
-         total >= 60 ? '✦ BASED' :
-         total >= 40 ? '◎ FAIR' :
-         '⚠ DEGEN'}
-      </div>
+      <div style={s.scoreLabel}>{tier}</div>
 
-      {/* Breakdown */}
-      <div style={styles.scoreItems}>
+      <div style={s.scoreItems}>
         {items.map((item) => (
-          <div key={item.label} style={styles.scoreItem}>
-            <span style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '9px' }}>
+          <div key={item.label} style={s.scoreItem}>
+            <span
+              style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '9px' }}
+            >
               {item.earned ? '✓' : '○'}
             </span>
-            <span style={{
-              ...styles.scoreItemLabel,
-              color: item.earned ? '#c084fc' : '#4c1d95',
-            }}>
+            <span
+              style={{
+                ...s.scoreItemLabel,
+                color: item.earned ? '#c084fc' : '#4c1d95',
+              }}
+            >
               {item.label}
             </span>
-            <span style={{ ...styles.scoreItemPts, color: item.earned ? scoreColor : '#3b0764' }}>
+            <span
+              style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : '#3b0764' }}
+            >
               +{item.pts}
             </span>
           </div>
@@ -248,31 +377,47 @@ function BasedScorePanel({ form }: { form: FormState }) {
   );
 }
 
-/* ── Step components ──────────────────────────────────────────────────────── */
+/* ── Step 1 ───────────────────────────────────────────────────────────────── */
 
-function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
+function Step1({
+  form,
+  setForm,
+  isMobile,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  isMobile: boolean;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleImage = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be under 2MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      setForm((f) => ({ ...f, imageDataUri: (evt.target?.result as string) ?? '' }));
-    };
-    reader.readAsDataURL(file);
-  }, [setForm]);
+  const handleImage = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image must be under 2MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        setForm((f) => ({
+          ...f,
+          imageDataUri: (evt.target?.result as string) ?? '',
+        }));
+      };
+      reader.readAsDataURL(file);
+    },
+    [setForm],
+  );
 
   return (
-    <Card>
-      <div style={styles.stepTitle}>STEP 1 · TOKEN BASICS</div>
+    <Card isMobile={isMobile}>
+      <div style={s.stepTitle}>STEP 1 · TOKEN BASICS</div>
 
-      <div style={styles.field}>
-        <Label>TOKEN NAME <span style={styles.required}>*</span></Label>
+      <div style={s.field}>
+        <Label>
+          TOKEN NAME <span style={s.required}>*</span>
+        </Label>
         <TextInput
           value={form.tokenName}
           onChange={(v) => setForm((f) => ({ ...f, tokenName: v }))}
@@ -282,8 +427,10 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         <Hint>{form.tokenName.length}/32 characters</Hint>
       </div>
 
-      <div style={styles.field}>
-        <Label>TOKEN SYMBOL <span style={styles.required}>*</span></Label>
+      <div style={s.field}>
+        <Label>
+          TOKEN SYMBOL <span style={s.required}>*</span>
+        </Label>
         <TextInput
           value={form.tokenSymbol}
           onChange={(v) => setForm((f) => ({ ...f, tokenSymbol: v.toUpperCase() }))}
@@ -293,10 +440,10 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         <Hint>{form.tokenSymbol.length}/10 characters</Hint>
       </div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>DESCRIPTION</Label>
         <textarea
-          style={styles.textarea}
+          style={s.textarea}
           value={form.description}
           onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           placeholder="Tell the world about your token..."
@@ -304,23 +451,23 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         />
       </div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>TOKEN IMAGE</Label>
         <div
           style={{
-            ...styles.imageUpload,
+            ...s.imageUpload,
             borderColor: form.imageDataUri ? '#db2777' : '#3b0764',
           }}
           onClick={() => fileRef.current?.click()}
         >
           {form.imageDataUri ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={form.imageDataUri} alt="preview" style={styles.imagePreview} />
+            <img src={form.imageDataUri} alt="preview" style={s.imagePreview} />
           ) : (
-            <div style={styles.imageUploadInner}>
-              <span style={styles.imageUploadIcon}>◎</span>
-              <span style={styles.imageUploadText}>CLICK TO UPLOAD</span>
-              <span style={styles.imageUploadHint}>PNG, JPG, GIF · MAX 2MB</span>
+            <div style={s.imageUploadInner}>
+              <span style={s.imageUploadIcon}>◎</span>
+              <span style={s.imageUploadText}>CLICK TO UPLOAD</span>
+              <span style={s.imageUploadHint}>PNG, JPG, GIF · MAX 2MB</span>
             </div>
           )}
         </div>
@@ -333,7 +480,7 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         />
         {form.imageDataUri && (
           <button
-            style={styles.clearBtn}
+            style={s.clearBtn}
             onClick={() => setForm((f) => ({ ...f, imageDataUri: '' }))}
           >
             ✕ REMOVE IMAGE
@@ -341,15 +488,15 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         )}
       </div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>DECIMALS</Label>
-        <div style={styles.radioGroup}>
+        <div style={s.radioGroup}>
           {([6, 9] as (6 | 9)[]).map((d) => (
             <button
               key={d}
               style={{
-                ...styles.radioBtn,
-                ...(form.decimals === d ? styles.radioBtnActive : {}),
+                ...s.radioBtn,
+                ...(form.decimals === d ? s.radioBtnActive : {}),
               }}
               onClick={() => setForm((f) => ({ ...f, decimals: d }))}
             >
@@ -363,53 +510,73 @@ function Step1({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
   );
 }
 
-function Step2({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
-  const sellA = Math.round(form.supply * form.curvePercent / 100);
+/* ── Step 2 ───────────────────────────────────────────────────────────────── */
+
+function Step2({
+  form,
+  setForm,
+  isMobile,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  isMobile: boolean;
+}) {
+  const sellA = Math.round((form.supply * form.curvePercent) / 100);
   const reserved = form.supply - sellA;
 
   return (
-    <Card>
-      <div style={styles.stepTitle}>STEP 2 · SUPPLY &amp; CURVE</div>
+    <Card isMobile={isMobile}>
+      <div style={s.stepTitle}>STEP 2 · SUPPLY &amp; CURVE</div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>TOTAL SUPPLY</Label>
         <NumberInput
           value={form.supply}
-          onChange={(v) => setForm((f) => ({ ...f, supply: Math.max(1, Math.round(v)) }))}
+          onChange={(v) =>
+            setForm((f) => ({ ...f, supply: Math.max(1, Math.round(v)) }))
+          }
           min={1}
           step={1_000_000}
         />
         <Hint>{fmtNumber(form.supply)} tokens total</Hint>
       </div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>% SOLD ON BONDING CURVE</Label>
-        <div style={styles.sliderRow}>
+        <div style={s.sliderRow}>
           <input
             type="range"
-            style={styles.slider}
+            style={{ ...s.slider, width: '100%' }}
             min={20}
             max={100}
             step={0.01}
             value={form.curvePercent}
-            onChange={(e) => setForm((f) => ({ ...f, curvePercent: parseFloat(e.target.value) }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, curvePercent: parseFloat(e.target.value) }))
+            }
           />
-          <span style={styles.sliderValue}>{form.curvePercent.toFixed(2)}%</span>
+          <span style={s.sliderValue}>{form.curvePercent.toFixed(2)}%</span>
         </div>
-        <div style={styles.curveStats}>
-          <div style={styles.curveStat}>
-            <span style={styles.curveStatLabel}>ON CURVE</span>
-            <span style={styles.curveStatValue}>{fmtNumber(sellA)}</span>
+        {/* Stack vertically on mobile */}
+        <div
+          style={{
+            ...s.curveStats,
+            flexDirection: isMobile ? 'column' : 'row',
+          }}
+        >
+          <div style={s.curveStat}>
+            <span style={s.curveStatLabel}>ON CURVE</span>
+            <span style={s.curveStatValue}>{fmtNumber(sellA)}</span>
           </div>
-          <div style={styles.curveStat}>
-            <span style={styles.curveStatLabel}>RESERVED</span>
-            <span style={styles.curveStatValue}>{fmtNumber(reserved)}</span>
+          <div style={s.curveStat}>
+            <span style={s.curveStatLabel}>RESERVED</span>
+            <span style={s.curveStatValue}>{fmtNumber(reserved)}</span>
           </div>
         </div>
         <Hint>Higher % = fairer distribution. Raydium default is 79.31%</Hint>
       </div>
 
-      <div style={styles.field}>
+      <div style={s.field}>
         <Label>SOL FUNDRAISING TARGET</Label>
         <NumberInput
           value={form.targetSol}
@@ -420,55 +587,78 @@ function Step2({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
         <Hint>SOL raised before graduating to CPMM pool. Raydium default is 85 SOL</Hint>
       </div>
 
-      <div style={styles.curveTypeBox}>
-        <span style={styles.curveTypeLabel}>CURVE TYPE</span>
-        <span style={styles.curveTypeBadge}>CONSTANT PRODUCT</span>
+      <div style={s.curveTypeBox}>
+        <span style={s.curveTypeLabel}>CURVE TYPE</span>
+        <span style={s.curveTypeBadge}>CONSTANT PRODUCT</span>
       </div>
     </Card>
   );
 }
 
-function Step3({ form, setForm }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>> }) {
-  // Estimate tokens received for initial buy using a rough constant-product formula
+/* ── Step 3 ───────────────────────────────────────────────────────────────── */
+
+function Step3({
+  form,
+  setForm,
+  isMobile,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  isMobile: boolean;
+}) {
   const estimatedTokens = (() => {
     if (!form.initialBuyEnabled || form.initialBuySol <= 0) return 0;
-    const sellA = form.supply * form.curvePercent / 100;
-    // virtualB ≈ sellA * targetSol / (supply - sellA) — simplified estimate
+    const sellA = (form.supply * form.curvePercent) / 100;
     const virtualB = (sellA * form.targetSol) / (form.supply - sellA || 1);
-    const inputSol = form.initialBuySol;
-    const tokensOut = (sellA * inputSol) / (virtualB + inputSol);
+    const tokensOut = (sellA * form.initialBuySol) / (virtualB + form.initialBuySol);
     return Math.round(tokensOut);
   })();
 
+  // Remove indent on mobile — space is precious
+  const toggleContentStyle: React.CSSProperties = {
+    ...s.toggleContent,
+    paddingLeft: isMobile ? '0' : '54px',
+    paddingTop: '12px',
+  };
+
   return (
-    <Card>
-      <div style={styles.stepTitle}>STEP 3 · ADVANCED OPTIONS</div>
+    <Card isMobile={isMobile}>
+      <div style={s.stepTitle}>STEP 3 · ADVANCED OPTIONS</div>
 
       {/* Token-2022 */}
-      <div style={styles.toggleSection}>
+      <div style={s.toggleSection}>
         <Toggle
           checked={form.token2022}
           onChange={(v) => setForm((f) => ({ ...f, token2022: v }))}
           label="TOKEN-2022 (REBASED TOKEN)"
         />
         {form.token2022 && (
-          <div style={styles.toggleContent}>
-            <div style={styles.field}>
+          <div style={toggleContentStyle}>
+            <div style={s.field}>
               <Label>TRANSFER FEE %</Label>
               <NumberInput
                 value={form.transferFeeBps / 100}
-                onChange={(v) => setForm((f) => ({ ...f, transferFeeBps: Math.min(1000, Math.max(0, Math.round(v * 100))) }))}
+                onChange={(v) =>
+                  setForm((f) => ({
+                    ...f,
+                    transferFeeBps: Math.min(1000, Math.max(0, Math.round(v * 100))),
+                  }))
+                }
                 min={0}
                 max={10}
                 step={0.1}
               />
-              <Hint>{(form.transferFeeBps / 100).toFixed(1)}% fee on every transfer</Hint>
+              <Hint>
+                {(form.transferFeeBps / 100).toFixed(1)}% fee on every transfer
+              </Hint>
             </div>
-            <div style={styles.field}>
+            <div style={s.field}>
               <Label>MAX FEE PER TRANSFER (TOKENS)</Label>
               <NumberInput
                 value={form.maxTransferFeeTokens}
-                onChange={(v) => setForm((f) => ({ ...f, maxTransferFeeTokens: Math.max(0, v) }))}
+                onChange={(v) =>
+                  setForm((f) => ({ ...f, maxTransferFeeTokens: Math.max(0, v) }))
+                }
                 min={0}
                 step={1000}
               />
@@ -479,47 +669,60 @@ function Step3({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
       </div>
 
       {/* Vesting */}
-      <div style={styles.toggleSection}>
+      <div style={s.toggleSection}>
         <Toggle
           checked={form.vestingEnabled}
           onChange={(v) => setForm((f) => ({ ...f, vestingEnabled: v }))}
           label="VESTING (+20 BASED SCORE)"
         />
         {form.vestingEnabled && (
-          <div style={styles.toggleContent}>
-            <div style={styles.field}>
+          <div style={toggleContentStyle}>
+            <div style={s.field}>
               <Label>% OF SUPPLY TO VEST</Label>
-              <div style={styles.sliderRow}>
+              <div style={s.sliderRow}>
                 <input
                   type="range"
-                  style={styles.slider}
+                  style={{ ...s.slider, width: '100%' }}
                   min={1}
                   max={30}
                   step={1}
                   value={form.vestingPercent}
-                  onChange={(e) => setForm((f) => ({ ...f, vestingPercent: parseInt(e.target.value) }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, vestingPercent: parseInt(e.target.value) }))
+                  }
                 />
-                <span style={styles.sliderValue}>{form.vestingPercent}%</span>
+                <span style={s.sliderValue}>{form.vestingPercent}%</span>
               </div>
               <Hint>
-                {fmtNumber(Math.round(form.supply * form.vestingPercent / 100))} tokens locked for vesting
+                {fmtNumber(Math.round((form.supply * form.vestingPercent) / 100))}{' '}
+                tokens locked for vesting
               </Hint>
             </div>
-            <div style={styles.twoCol}>
-              <div style={styles.field}>
+            {/* Stack cliff/unlock on mobile */}
+            <div
+              style={{
+                ...s.twoCol,
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              }}
+            >
+              <div style={s.field}>
                 <Label>CLIFF (DAYS)</Label>
                 <NumberInput
                   value={form.cliffDays}
-                  onChange={(v) => setForm((f) => ({ ...f, cliffDays: Math.max(0, Math.round(v)) }))}
+                  onChange={(v) =>
+                    setForm((f) => ({ ...f, cliffDays: Math.max(0, Math.round(v)) }))
+                  }
                   min={0}
                   max={3650}
                 />
               </div>
-              <div style={styles.field}>
+              <div style={s.field}>
                 <Label>UNLOCK PERIOD (DAYS)</Label>
                 <NumberInput
                   value={form.unlockDays}
-                  onChange={(v) => setForm((f) => ({ ...f, unlockDays: Math.max(1, Math.round(v)) }))}
+                  onChange={(v) =>
+                    setForm((f) => ({ ...f, unlockDays: Math.max(1, Math.round(v)) }))
+                  }
                   min={1}
                   max={3650}
                 />
@@ -530,55 +733,65 @@ function Step3({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
       </div>
 
       {/* Initial Buy */}
-      <div style={styles.toggleSection}>
+      <div style={s.toggleSection}>
         <Toggle
           checked={form.initialBuyEnabled}
-          onChange={(v) => setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }))}
+          onChange={(v) =>
+            setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }))
+          }
           label="INITIAL BUY AT LAUNCH"
         />
         {form.initialBuyEnabled && (
-          <div style={styles.toggleContent}>
-            <div style={styles.field}>
+          <div style={toggleContentStyle}>
+            <div style={s.field}>
               <Label>SOL AMOUNT TO BUY</Label>
               <NumberInput
                 value={form.initialBuySol}
-                onChange={(v) => setForm((f) => ({ ...f, initialBuySol: Math.max(0, v) }))}
+                onChange={(v) =>
+                  setForm((f) => ({ ...f, initialBuySol: Math.max(0, v) }))
+                }
                 min={0}
                 step={0.1}
               />
             </div>
             {estimatedTokens > 0 && (
-              <div style={styles.estimateBox}>
-                <span style={styles.estimateLabel}>ESTIMATED TOKENS RECEIVED</span>
-                <span style={styles.estimateValue}>≈ {fmtNumber(estimatedTokens)}</span>
+              <div style={s.estimateBox}>
+                <span style={s.estimateLabel}>ESTIMATED TOKENS RECEIVED</span>
+                <span style={s.estimateValue}>≈ {fmtNumber(estimatedTokens)}</span>
               </div>
             )}
-            <Hint>
-              ⚠ Large initial buys reduce based score. Keep it under 1 SOL.
-            </Hint>
+            <Hint>⚠ Large initial buys reduce based score. Keep it under 1 SOL.</Hint>
           </div>
         )}
       </div>
 
       {/* Creator Fees */}
-      <div style={styles.toggleSection}>
-        <div style={styles.toggleLabel2}>CREATOR FEE TYPE</div>
-        <div style={styles.radioGroup}>
+      <div style={s.toggleSection}>
+        <div style={s.toggleLabel2}>CREATOR FEE TYPE</div>
+        <div style={s.radioGroup}>
           <button
             style={{
-              ...styles.radioBtn,
-              ...(form.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB ? styles.radioBtnActive : {}),
+              ...s.radioBtn,
+              ...(form.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB
+                ? s.radioBtnActive
+                : {}),
             }}
-            onClick={() => setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB }))}
+            onClick={() =>
+              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB }))
+            }
           >
             SOL ONLY (RECOMMENDED)
           </button>
           <button
             style={{
-              ...styles.radioBtn,
-              ...(form.creatorFeeOn === CpmmCreatorFeeOn.BothToken ? styles.radioBtnActive : {}),
+              ...s.radioBtn,
+              ...(form.creatorFeeOn === CpmmCreatorFeeOn.BothToken
+                ? s.radioBtnActive
+                : {}),
             }}
-            onClick={() => setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.BothToken }))}
+            onClick={() =>
+              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.BothToken }))
+            }
           >
             BOTH TOKENS
           </button>
@@ -589,29 +802,35 @@ function Step3({ form, setForm }: { form: FormState; setForm: React.Dispatch<Rea
   );
 }
 
+/* ── Step 4 ───────────────────────────────────────────────────────────────── */
+
 function Step4({
   form,
   status,
   error,
   txIds,
   onLaunch,
+  isMobile,
 }: {
   form: FormState;
   status: 'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done';
   error: string | null;
   txIds: string[];
   onLaunch: () => void;
+  isMobile: boolean;
 }) {
   const { publicKey, signAllTransactions } = useWallet();
   const { setVisible } = useWalletModal();
 
-  const sellA = Math.round(form.supply * form.curvePercent / 100);
-  const vestA = form.vestingEnabled ? Math.round(form.supply * form.vestingPercent / 100) : 0;
+  const sellA = Math.round((form.supply * form.curvePercent) / 100);
+  const vestA = form.vestingEnabled
+    ? Math.round((form.supply * form.vestingPercent) / 100)
+    : 0;
   const networkFeeEstimate = 0.015;
   const totalSol =
-    LAUNCH_FEE_LAMPORTS / LAMPORTS_PER_SOL
-    + networkFeeEstimate
-    + (form.initialBuyEnabled ? form.initialBuySol : 0);
+    LAUNCH_FEE_LAMPORTS / LAMPORTS_PER_SOL +
+    networkFeeEstimate +
+    (form.initialBuyEnabled ? form.initialBuySol : 0);
 
   const busy = status !== 'idle' && status !== 'done';
 
@@ -619,81 +838,128 @@ function Step4({
     idle: '',
     uploading: 'UPLOADING METADATA...',
     building: 'BUILDING TRANSACTIONS...',
-    signing: 'WAITING FOR WALLET SIGNATURE...',
+    signing: 'WAITING FOR WALLET...',
     sending: 'SUBMITTING TO SOLANA...',
     done: 'LAUNCH COMPLETE!',
   };
 
   return (
-    <Card>
-      <div style={styles.stepTitle}>STEP 4 · REVIEW &amp; LAUNCH</div>
+    <Card isMobile={isMobile}>
+      <div style={s.stepTitle}>STEP 4 · REVIEW &amp; LAUNCH</div>
 
       {/* Summary table */}
-      <div style={styles.reviewTable}>
-        <ReviewRow label="TOKEN NAME" value={form.tokenName || '—'} />
-        <ReviewRow label="SYMBOL" value={form.tokenSymbol || '—'} />
-        <ReviewRow label="DECIMALS" value={String(form.decimals)} />
-        <ReviewRow label="TOTAL SUPPLY" value={fmtNumber(form.supply)} />
-        <ReviewRow label="SOLD ON CURVE" value={`${fmtNumber(sellA)} (${form.curvePercent.toFixed(2)}%)`} />
-        <ReviewRow label="FUNDRAISE TARGET" value={`${form.targetSol} SOL`} />
-        <ReviewRow label="VESTING" value={form.vestingEnabled ? `${fmtNumber(vestA)} (${form.vestingPercent}%)` : 'NONE'} />
+      <div style={s.reviewTable}>
+        <ReviewRow label="TOKEN NAME" value={form.tokenName || '—'} isMobile={isMobile} />
+        <ReviewRow label="SYMBOL" value={form.tokenSymbol || '—'} isMobile={isMobile} />
+        <ReviewRow label="DECIMALS" value={String(form.decimals)} isMobile={isMobile} />
+        <ReviewRow label="TOTAL SUPPLY" value={fmtNumber(form.supply)} isMobile={isMobile} />
+        <ReviewRow
+          label="SOLD ON CURVE"
+          value={`${fmtNumber(sellA)} (${form.curvePercent.toFixed(2)}%)`}
+          isMobile={isMobile}
+        />
+        <ReviewRow
+          label="FUNDRAISE TARGET"
+          value={`${form.targetSol} SOL`}
+          isMobile={isMobile}
+        />
+        <ReviewRow
+          label="VESTING"
+          value={
+            form.vestingEnabled
+              ? `${fmtNumber(vestA)} (${form.vestingPercent}%)`
+              : 'NONE'
+          }
+          isMobile={isMobile}
+        />
         {form.vestingEnabled && (
           <>
-            <ReviewRow label="CLIFF" value={`${form.cliffDays} DAYS`} />
-            <ReviewRow label="UNLOCK PERIOD" value={`${form.unlockDays} DAYS`} />
+            <ReviewRow
+              label="CLIFF"
+              value={`${form.cliffDays} DAYS`}
+              isMobile={isMobile}
+            />
+            <ReviewRow
+              label="UNLOCK PERIOD"
+              value={`${form.unlockDays} DAYS`}
+              isMobile={isMobile}
+            />
           </>
         )}
-        <ReviewRow label="TOKEN-2022" value={form.token2022 ? 'YES' : 'NO'} />
+        <ReviewRow
+          label="TOKEN-2022"
+          value={form.token2022 ? 'YES' : 'NO'}
+          isMobile={isMobile}
+        />
         {form.token2022 && form.transferFeeBps > 0 && (
-          <ReviewRow label="TRANSFER FEE" value={`${(form.transferFeeBps / 100).toFixed(1)}%`} />
+          <ReviewRow
+            label="TRANSFER FEE"
+            value={`${(form.transferFeeBps / 100).toFixed(1)}%`}
+            isMobile={isMobile}
+          />
         )}
-        <ReviewRow label="INITIAL BUY" value={form.initialBuyEnabled ? `${form.initialBuySol} SOL` : 'NONE'} />
-        <ReviewRow label="CREATOR FEES" value={form.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB ? 'SOL ONLY' : 'BOTH TOKENS'} />
+        <ReviewRow
+          label="INITIAL BUY"
+          value={form.initialBuyEnabled ? `${form.initialBuySol} SOL` : 'NONE'}
+          isMobile={isMobile}
+        />
+        <ReviewRow
+          label="CREATOR FEES"
+          value={
+            form.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB
+              ? 'SOL ONLY'
+              : 'BOTH TOKENS'
+          }
+          isMobile={isMobile}
+        />
       </div>
 
       {/* Cost breakdown */}
-      <div style={styles.costCard}>
-        <div style={styles.costTitle}>ESTIMATED COSTS</div>
-        <div style={styles.costRows}>
-          <CostRow label="BASEDFARMS LAUNCH FEE" value={`${(LAUNCH_FEE_LAMPORTS / LAMPORTS_PER_SOL).toFixed(2)} SOL`} />
+      <div style={s.costCard}>
+        <div style={s.costTitle}>ESTIMATED COSTS</div>
+        <div style={s.costRows}>
+          <CostRow
+            label="BASEDFARMS LAUNCH FEE"
+            value={`${(LAUNCH_FEE_LAMPORTS / LAMPORTS_PER_SOL).toFixed(2)} SOL`}
+          />
           <CostRow label="NETWORK FEES" value={`≈ ${networkFeeEstimate} SOL`} />
           {form.initialBuyEnabled && form.initialBuySol > 0 && (
             <CostRow label="INITIAL BUY" value={`${form.initialBuySol} SOL`} />
           )}
-          <div style={styles.costDivider} />
+          <div style={s.costDivider} />
           <CostRow label="TOTAL" value={`≈ ${totalSol.toFixed(3)} SOL`} bold />
         </div>
-        <div style={styles.shareNote}>
+        <div style={s.shareNote}>
           + 0.3% of all bonding-curve trades routed to BASEDFARMS
         </div>
       </div>
 
-      {/* Status / error */}
+      {/* Status */}
       {busy && (
-        <div style={styles.statusBox}>
-          <span style={styles.spinner}>◌</span>
-          <span style={styles.statusText}>{statusLabel[status]}</span>
+        <div style={s.statusBox}>
+          <span style={s.spinner}>◌</span>
+          <span style={s.statusText}>{statusLabel[status]}</span>
         </div>
       )}
       {error && (
-        <div style={styles.errorBox}>
-          <span style={styles.errorTitle}>ERROR</span>
-          <span style={styles.errorMsg}>{error}</span>
+        <div style={s.errorBox}>
+          <span style={s.errorTitle}>ERROR</span>
+          <span style={s.errorMsg}>{error}</span>
         </div>
       )}
 
       {/* Success */}
       {status === 'done' && txIds.length > 0 && (
-        <div style={styles.successBox}>
-          <div style={styles.successTitle}>🚀 TOKEN LAUNCHED!</div>
-          <div style={styles.txList}>
+        <div style={s.successBox}>
+          <div style={s.successTitle}>🚀 TOKEN LAUNCHED!</div>
+          <div style={s.txList}>
             {txIds.map((sig, i) => (
               <a
                 key={sig}
                 href={`https://solscan.io/tx/${sig}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={styles.txLink}
+                style={s.txLink}
               >
                 TX {i + 1} ↗ {sig.slice(0, 12)}...{sig.slice(-6)}
               </a>
@@ -703,28 +969,37 @@ function Step4({
       )}
 
       {/* CTA */}
-      {status !== 'done' && (
-        !publicKey ? (
-          <button style={styles.launchBtn} onClick={() => setVisible(true)}>
+      {status !== 'done' &&
+        (!publicKey ? (
+          <button
+            style={{ ...s.launchBtn, minHeight: isMobile ? '56px' : '48px' }}
+            onClick={() => setVisible(true)}
+          >
             CONNECT WALLET TO LAUNCH
           </button>
         ) : !signAllTransactions ? (
-          <div style={styles.errorBox}>
-            <span style={styles.errorMsg}>Your wallet does not support signAllTransactions. Please use Phantom or Backpack.</span>
+          <div style={s.errorBox}>
+            <span style={s.errorMsg}>
+              Your wallet does not support signAllTransactions. Please use Phantom or
+              Backpack.
+            </span>
           </div>
         ) : (
           <button
-            style={{ ...styles.launchBtn, ...(busy ? styles.launchBtnDisabled : {}) }}
+            style={{
+              ...s.launchBtn,
+              minHeight: isMobile ? '56px' : '48px',
+              ...(busy ? s.launchBtnDisabled : {}),
+            }}
             onClick={onLaunch}
             disabled={busy}
           >
             {busy ? statusLabel[status] : '🚀 LAUNCH TOKEN'}
           </button>
-        )
-      )}
+        ))}
 
       {status === 'done' && (
-        <Link href="/" style={styles.doneBtn}>
+        <Link href="/" style={s.doneBtn}>
           ← BACK TO HOME
         </Link>
       )}
@@ -732,44 +1007,96 @@ function Step4({
   );
 }
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
+function ReviewRow({
+  label,
+  value,
+  isMobile,
+}: {
+  label: string;
+  value: string;
+  isMobile: boolean;
+}) {
   return (
-    <div style={styles.reviewRow}>
-      <span style={styles.reviewLabel}>{label}</span>
-      <span style={styles.reviewValue}>{value}</span>
+    <div style={s.reviewRow}>
+      <span style={s.reviewLabel}>{label}</span>
+      <span
+        style={{
+          ...s.reviewValue,
+          // On mobile: truncate long values with ellipsis
+          maxWidth: isMobile ? '140px' : '60%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+        title={value}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-function CostRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function CostRow({
+  label,
+  value,
+  bold,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) {
   return (
-    <div style={styles.costRow}>
-      <span style={{ ...styles.costLabel, ...(bold ? { color: '#e879f9' } : {}) }}>{label}</span>
-      <span style={{ ...styles.costValue, ...(bold ? { color: '#e879f9', fontSize: '10px' } : {}) }}>{value}</span>
+    <div style={s.costRow}>
+      <span style={{ ...s.costLabel, ...(bold ? { color: '#e879f9' } : {}) }}>
+        {label}
+      </span>
+      <span
+        style={{
+          ...s.costValue,
+          ...(bold ? { color: '#e879f9', fontSize: '10px' } : {}),
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-/* ── Progress Indicator ───────────────────────────────────────────────────── */
+/* ── Progress Bar ─────────────────────────────────────────────────────────── */
 
-function ProgressBar({ step, total }: { step: number; total: number }) {
+function ProgressBar({ step, total, isMobile }: { step: number; total: number; isMobile: boolean }) {
   return (
-    <div style={styles.progressBar}>
+    <div style={{ ...s.progressBar, padding: isMobile ? '14px 16px 6px' : '20px 20px 8px' }}>
       {Array.from({ length: total }, (_, i) => (
-        <div key={i} style={styles.progressStep}>
-          <div style={{
-            ...styles.progressDot,
-            background: i < step ? '#db2777' : i === step - 1 ? '#db2777' : '#1e0035',
-            borderColor: i === step - 1 ? '#db2777' : i < step ? '#db2777' : '#3b0764',
-            boxShadow: i === step - 1 ? '0 0 12px rgba(219, 39, 119, 0.8)' : 'none',
-          }}>
+        <div key={i} style={s.progressStep}>
+          <div
+            style={{
+              ...s.progressDot,
+              width: isMobile ? '22px' : '28px',
+              height: isMobile ? '22px' : '28px',
+              fontSize: isMobile ? '6px' : '7px',
+              background:
+                i < step ? '#db2777' : i === step - 1 ? '#db2777' : '#1e0035',
+              borderColor:
+                i === step - 1
+                  ? '#db2777'
+                  : i < step
+                  ? '#db2777'
+                  : '#3b0764',
+              boxShadow:
+                i === step - 1 ? '0 0 10px rgba(219, 39, 119, 0.8)' : 'none',
+            }}
+          >
             {i < step ? '✓' : i + 1}
           </div>
           {i < total - 1 && (
-            <div style={{
-              ...styles.progressLine,
-              background: i < step - 1 ? '#db2777' : '#1e0035',
-            }} />
+            <div
+              style={{
+                ...s.progressLine,
+                width: isMobile ? '20px' : '40px',
+                background: i < step - 1 ? '#db2777' : '#1e0035',
+              }}
+            />
           )}
         </div>
       ))}
@@ -782,17 +1109,25 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 const STEPS = ['TOKEN BASICS', 'SUPPLY & CURVE', 'ADVANCED', 'REVIEW'];
 
 export default function LaunchPage() {
+  const isMobile = useMobile();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(DEFAULT);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done'>('idle');
+  const [status, setStatus] = useState<
+    'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done'
+  >('idle');
   const [error, setError] = useState<string | null>(null);
   const [txIds, setTxIds] = useState<string[]>([]);
+  const [scoreExpanded, setScoreExpanded] = useState(false);
 
   const { publicKey, signAllTransactions } = useWallet();
 
   const canNext = (() => {
-    if (step === 1) return form.tokenName.trim().length > 0 && form.tokenSymbol.trim().length > 0;
-    if (step === 2) return form.supply > 0 && form.curvePercent >= 20 && form.targetSol > 0;
+    if (step === 1)
+      return (
+        form.tokenName.trim().length > 0 && form.tokenSymbol.trim().length > 0
+      );
+    if (step === 2)
+      return form.supply > 0 && form.curvePercent >= 20 && form.targetSol > 0;
     return true;
   })();
 
@@ -801,7 +1136,6 @@ export default function LaunchPage() {
     setError(null);
 
     try {
-      // Step 1: upload metadata
       setStatus('uploading');
       const metadataUri = await uploadMetadata({
         name: form.tokenName,
@@ -810,7 +1144,6 @@ export default function LaunchPage() {
         imageDataUri: form.imageDataUri,
       });
 
-      // Step 2: build params
       setStatus('building');
       const params: LaunchParams = {
         name: form.tokenName,
@@ -836,11 +1169,11 @@ export default function LaunchPage() {
         creatorFeeOn: form.creatorFeeOn,
       };
 
-      // Step 3: sign (wallet prompt)
       setStatus('signing');
-      const typedSignAll = signAllTransactions as (txs: Transaction[]) => Promise<Transaction[]>;
+      const typedSignAll = signAllTransactions as (
+        txs: Transaction[],
+      ) => Promise<Transaction[]>;
 
-      // Step 4: send
       setStatus('sending');
       const result = await createToken(params, metadataUri, publicKey, typedSignAll);
 
@@ -854,33 +1187,78 @@ export default function LaunchPage() {
     }
   }, [form, publicKey, signAllTransactions]);
 
-  // Redirect to farm page on success
-  useEffect(() => {
-    // txIds[0] won't give us mint address — we'd need the result object
-    // For now, just mark done and show the tx links
-  }, [txIds]);
+  // Suppress unused-effect warning — placeholder for future redirect
+  useEffect(() => {}, [txIds]);
+
+  const scorePanel = (
+    <BasedScorePanel
+      form={form}
+      isMobile={isMobile}
+      expanded={scoreExpanded}
+      onToggle={() => setScoreExpanded((v) => !v)}
+    />
+  );
+
+  // Nav row — stacked on mobile (NEXT on top), inline on desktop
+  const navRow = step < 4 && (
+    <div
+      style={{
+        ...s.navRow,
+        flexDirection: isMobile ? 'column-reverse' : 'row',
+        gap: isMobile ? '8px' : '12px',
+      }}
+    >
+      {step > 1 && (
+        <button
+          style={{
+            ...s.backBtn,
+            minHeight: isMobile ? '48px' : 'auto',
+            flex: isMobile ? 'none' : 1,
+            width: isMobile ? '100%' : 'auto',
+          }}
+          onClick={() => setStep((prev) => prev - 1)}
+        >
+          ← BACK
+        </button>
+      )}
+      <button
+        style={{
+          ...s.nextBtn,
+          minHeight: isMobile ? '48px' : 'auto',
+          flex: isMobile ? 'none' : 2,
+          width: isMobile ? '100%' : 'auto',
+          ...(canNext ? {} : s.nextBtnDisabled),
+        }}
+        onClick={() => {
+          if (canNext) setStep((prev) => prev + 1);
+        }}
+        disabled={!canNext}
+      >
+        {step === 3 ? 'REVIEW →' : 'NEXT →'}
+      </button>
+    </div>
+  );
 
   return (
-    <main style={styles.page}>
+    <main style={s.page}>
       {/* Header */}
-      <header style={styles.header}>
-        <Link href="/" style={styles.logo}>
-          BASED<span style={styles.logoAccent}>FARMS</span>
+      <header style={s.header}>
+        <Link href="/" style={s.logo}>
+          BASED<span style={s.logoAccent}>FARMS</span>
         </Link>
-        <div style={styles.headerRight}>
-          <span style={styles.headerLabel}>LAUNCH TOKEN</span>
-        </div>
+        <span style={s.headerLabel}>LAUNCH TOKEN</span>
       </header>
 
       {/* Progress */}
-      <ProgressBar step={step} total={STEPS.length} />
+      <ProgressBar step={step} total={STEPS.length} isMobile={isMobile} />
 
-      <div style={styles.layout}>
-        {/* Form column */}
-        <div style={styles.formCol}>
-          {step === 1 && <Step1 form={form} setForm={setForm} />}
-          {step === 2 && <Step2 form={form} setForm={setForm} />}
-          {step === 3 && <Step3 form={form} setForm={setForm} />}
+      {isMobile ? (
+        /* ── Mobile layout: single column, score above form ── */
+        <div style={s.mobileLayout}>
+          {scorePanel}
+          {step === 1 && <Step1 form={form} setForm={setForm} isMobile={isMobile} />}
+          {step === 2 && <Step2 form={form} setForm={setForm} isMobile={isMobile} />}
+          {step === 3 && <Step3 form={form} setForm={setForm} isMobile={isMobile} />}
           {step === 4 && (
             <Step4
               form={form}
@@ -888,39 +1266,35 @@ export default function LaunchPage() {
               error={error}
               txIds={txIds}
               onLaunch={handleLaunch}
+              isMobile={isMobile}
             />
           )}
-
-          {/* Navigation */}
-          {step < 4 && (
-            <div style={styles.navRow}>
-              {step > 1 && (
-                <button
-                  style={styles.backBtn}
-                  onClick={() => setStep((s) => s - 1)}
-                >
-                  ← BACK
-                </button>
-              )}
-              <button
-                style={{ ...styles.nextBtn, ...(canNext ? {} : styles.nextBtnDisabled) }}
-                onClick={() => { if (canNext) setStep((s) => s + 1); }}
-                disabled={!canNext}
-              >
-                {step === 3 ? 'REVIEW →' : 'NEXT →'}
-              </button>
-            </div>
-          )}
+          {navRow}
         </div>
-
-        {/* Score sidebar */}
-        <div style={styles.scoreCol}>
-          <BasedScorePanel form={form} />
+      ) : (
+        /* ── Desktop layout: two-column ── */
+        <div style={s.layout}>
+          <div style={s.formCol}>
+            {step === 1 && <Step1 form={form} setForm={setForm} isMobile={false} />}
+            {step === 2 && <Step2 form={form} setForm={setForm} isMobile={false} />}
+            {step === 3 && <Step3 form={form} setForm={setForm} isMobile={false} />}
+            {step === 4 && (
+              <Step4
+                form={form}
+                status={status}
+                error={error}
+                txIds={txIds}
+                onLaunch={handleLaunch}
+                isMobile={false}
+              />
+            )}
+            {navRow}
+          </div>
+          <div style={s.scoreCol}>{scorePanel}</div>
         </div>
-      </div>
+      )}
 
-      {/* Footer */}
-      <div style={styles.footer}>
+      <div style={s.footer}>
         POWERED BY RAYDIUM LAUNCHLAB · BASED FARMS · 0.1 SOL LAUNCH FEE
       </div>
     </main>
@@ -929,7 +1303,7 @@ export default function LaunchPage() {
 
 /* ── Styles ───────────────────────────────────────────────────────────────── */
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
     background: '#0d0015',
@@ -940,7 +1314,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 20px',
+    padding: '14px 16px',
     borderBottom: '1px solid #1e0035',
     background: 'rgba(13, 0, 21, 0.95)',
     backdropFilter: 'blur(10px)',
@@ -950,17 +1324,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   logo: {
     fontFamily: font,
-    fontSize: '12px',
+    fontSize: '11px',
     letterSpacing: '2px',
     color: '#c084fc',
     textDecoration: 'none',
     textShadow: '0 0 10px rgba(192, 132, 252, 0.4)',
   },
   logoAccent: { color: '#db2777' },
-  headerRight: { display: 'flex', alignItems: 'center', gap: '12px' },
   headerLabel: {
     fontFamily: font,
-    fontSize: '8px',
+    fontSize: '7px',
     color: '#e879f9',
     letterSpacing: '2px',
     textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
@@ -969,7 +1342,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px 20px 8px',
     gap: 0,
   },
   progressStep: {
@@ -977,25 +1349,22 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   progressDot: {
-    width: '28px',
-    height: '28px',
     borderRadius: '50%',
     border: '2px solid',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: font,
-    fontSize: '7px',
     color: '#ffffff',
     flexShrink: 0,
     transition: 'all 0.2s ease',
     cursor: 'default',
   },
   progressLine: {
-    width: '40px',
     height: '2px',
     transition: 'background 0.2s ease',
   },
+  // Desktop: two-column
   layout: {
     display: 'flex',
     gap: '20px',
@@ -1016,23 +1385,31 @@ const styles: Record<string, React.CSSProperties> = {
     width: '260px',
     flexShrink: 0,
     position: 'sticky',
-    top: '80px',
+    top: '72px',
   },
+  // Mobile: single column
+  mobileLayout: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    padding: '12px 12px 0',
+    boxSizing: 'border-box',
+  },
+  // Cards
   card: {
     background: 'rgba(13, 0, 32, 0.9)',
     border: '1px solid #3b0764',
-    borderRadius: '14px',
-    padding: '24px',
-    boxShadow: '0 0 30px rgba(124, 58, 237, 0.15), inset 0 0 30px rgba(88, 28, 135, 0.05)',
+    boxShadow:
+      '0 0 30px rgba(124, 58, 237, 0.12), inset 0 0 20px rgba(88, 28, 135, 0.04)',
     animation: 'border-glow 4s ease-in-out infinite',
   },
   stepTitle: {
     fontFamily: font,
-    fontSize: '9px',
+    fontSize: '8px',
     letterSpacing: '2px',
     color: '#e879f9',
     textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
-    marginBottom: '24px',
+    marginBottom: '20px',
     paddingBottom: '12px',
     borderBottom: '1px solid #1e0035',
   },
@@ -1040,7 +1417,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px',
-    marginBottom: '18px',
+    marginBottom: '16px',
   },
   label: {
     fontFamily: font,
@@ -1054,12 +1431,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '6px',
     letterSpacing: '1px',
     color: '#4c1d95',
+    lineHeight: 1.6,
   },
   input: {
     background: '#0d0020',
     border: '1px solid #3b0764',
     borderRadius: '8px',
-    padding: '10px 12px',
+    padding: '11px 12px',
     color: '#c084fc',
     fontFamily: font,
     fontSize: '8px',
@@ -1068,6 +1446,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     boxSizing: 'border-box',
     transition: 'border-color 0.15s',
+    minHeight: '44px', // touch target
   },
   inputDisabled: {
     opacity: 0.5,
@@ -1077,7 +1456,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#0d0020',
     border: '1px solid #3b0764',
     borderRadius: '8px',
-    padding: '10px 12px',
+    padding: '11px 12px',
     color: '#c084fc',
     fontFamily: font,
     fontSize: '8px',
@@ -1091,12 +1470,12 @@ const styles: Record<string, React.CSSProperties> = {
   imageUpload: {
     border: '2px dashed',
     borderRadius: '12px',
-    padding: '24px',
+    padding: '20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    minHeight: '120px',
+    minHeight: '110px',
     transition: 'border-color 0.2s',
     background: 'rgba(13, 0, 32, 0.5)',
   },
@@ -1106,13 +1485,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
   },
-  imageUploadIcon: {
-    fontSize: '32px',
-    color: '#3b0764',
-  },
+  imageUploadIcon: { fontSize: '28px', color: '#3b0764' },
   imageUploadText: {
     fontFamily: font,
-    fontSize: '8px',
+    fontSize: '7px',
     color: '#6d28d9',
     letterSpacing: '2px',
   },
@@ -1123,9 +1499,9 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '1px',
   },
   imagePreview: {
-    width: '96px',
-    height: '96px',
-    borderRadius: '12px',
+    width: '88px',
+    height: '88px',
+    borderRadius: '10px',
     objectFit: 'cover',
   },
   clearBtn: {
@@ -1137,7 +1513,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#4c1d95',
     letterSpacing: '1px',
     textAlign: 'left',
-    padding: 0,
+    padding: '4px 0',
   },
   radioGroup: {
     display: 'flex',
@@ -1148,13 +1524,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(88, 28, 135, 0.1)',
     border: '1px solid #3b0764',
     borderRadius: '6px',
-    padding: '8px 14px',
+    padding: '10px 14px',
     color: '#6d28d9',
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1px',
     cursor: 'pointer',
     transition: 'all 0.15s',
+    minHeight: '40px',
   },
   radioBtnActive: {
     background: 'rgba(219, 39, 119, 0.2)',
@@ -1165,24 +1542,26 @@ const styles: Record<string, React.CSSProperties> = {
   sliderRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
   },
   slider: {
     flex: 1,
     accentColor: '#db2777',
     cursor: 'pointer',
+    minHeight: '24px', // touch target
   },
   sliderValue: {
     fontFamily: font,
     fontSize: '8px',
     color: '#db2777',
-    minWidth: '50px',
+    minWidth: '52px',
     textAlign: 'right',
     textShadow: '0 0 8px rgba(219, 39, 119, 0.5)',
+    flexShrink: 0,
   },
   curveStats: {
     display: 'flex',
-    gap: '12px',
+    gap: '10px',
   },
   curveStat: {
     flex: 1,
@@ -1228,16 +1607,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toggleSection: {
     borderBottom: '1px solid #1e0035',
-    paddingBottom: '16px',
-    marginBottom: '16px',
+    paddingBottom: '14px',
+    marginBottom: '14px',
   },
   toggleRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '12px',
     cursor: 'pointer',
     userSelect: 'none',
-    marginBottom: '12px',
+    minHeight: '44px', // touch target
   },
   toggleTrack: {
     width: '44px',
@@ -1245,7 +1624,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
     position: 'relative',
     transition: 'background 0.2s',
-    flexShrink: 0,
   },
   toggleThumb: {
     position: 'absolute',
@@ -1262,6 +1640,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '7px',
     letterSpacing: '1px',
     color: '#c084fc',
+    lineHeight: 1.5,
   },
   toggleLabel2: {
     fontFamily: font,
@@ -1270,13 +1649,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#7c3aed',
     marginBottom: '10px',
   },
-  toggleContent: {
-    paddingLeft: '54px',
-  },
+  toggleContent: {},
   twoCol: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '12px',
+    gap: '10px',
   },
   estimateBox: {
     display: 'flex',
@@ -1287,6 +1663,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '8px',
     padding: '10px 14px',
     marginBottom: '8px',
+    gap: '8px',
   },
   estimateLabel: {
     fontFamily: font,
@@ -1299,13 +1676,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '9px',
     color: '#db2777',
     textShadow: '0 0 8px rgba(219, 39, 119, 0.5)',
+    flexShrink: 0,
   },
-  // Review step
+  // Review
   reviewTable: {
     display: 'flex',
     flexDirection: 'column',
     gap: 0,
-    marginBottom: '20px',
+    marginBottom: '16px',
     border: '1px solid #1e0035',
     borderRadius: '10px',
     overflow: 'hidden',
@@ -1314,9 +1692,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px 14px',
+    padding: '9px 12px',
     borderBottom: '1px solid #0d0020',
-    gap: '12px',
+    gap: '10px',
   },
   reviewLabel: {
     fontFamily: font,
@@ -1331,31 +1709,27 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#c084fc',
     letterSpacing: '1px',
     textAlign: 'right',
-    wordBreak: 'break-all',
   },
   costCard: {
     background: 'rgba(88, 28, 135, 0.08)',
     border: '1px solid #3b0764',
     borderRadius: '10px',
-    padding: '16px',
-    marginBottom: '20px',
+    padding: '14px',
+    marginBottom: '16px',
   },
   costTitle: {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '2px',
     color: '#7c3aed',
-    marginBottom: '12px',
+    marginBottom: '10px',
   },
-  costRows: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
+  costRows: { display: 'flex', flexDirection: 'column', gap: '8px' },
   costRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '8px',
   },
   costLabel: {
     fontFamily: font,
@@ -1363,33 +1737,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#6d28d9',
     letterSpacing: '1px',
   },
-  costValue: {
-    fontFamily: font,
-    fontSize: '7px',
-    color: '#c084fc',
-  },
-  costDivider: {
-    height: '1px',
-    background: '#1e0035',
-    margin: '4px 0',
-  },
+  costValue: { fontFamily: font, fontSize: '7px', color: '#c084fc' },
+  costDivider: { height: '1px', background: '#1e0035', margin: '2px 0' },
   shareNote: {
     fontFamily: font,
     fontSize: '6px',
     color: '#3b0764',
     letterSpacing: '1px',
-    marginTop: '10px',
+    marginTop: '8px',
     textAlign: 'center',
   },
   statusBox: {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    padding: '14px',
+    padding: '12px',
     background: 'rgba(124, 58, 237, 0.1)',
     border: '1px solid #7c3aed',
     borderRadius: '8px',
-    marginBottom: '16px',
+    marginBottom: '14px',
   },
   spinner: {
     fontFamily: font,
@@ -1407,11 +1773,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px',
-    padding: '14px',
+    padding: '12px',
     background: 'rgba(239, 68, 68, 0.08)',
     border: '1px solid #ef4444',
     borderRadius: '8px',
-    marginBottom: '16px',
+    marginBottom: '14px',
   },
   errorTitle: {
     fontFamily: font,
@@ -1430,12 +1796,12 @@ const styles: Record<string, React.CSSProperties> = {
   successBox: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
-    padding: '16px',
+    gap: '10px',
+    padding: '14px',
     background: 'rgba(34, 197, 94, 0.08)',
     border: '1px solid #22c55e',
     borderRadius: '8px',
-    marginBottom: '16px',
+    marginBottom: '14px',
   },
   successTitle: {
     fontFamily: font,
@@ -1444,11 +1810,7 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '2px',
     textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
   },
-  txList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
+  txList: { display: 'flex', flexDirection: 'column', gap: '8px' },
   txLink: {
     fontFamily: font,
     fontSize: '7px',
@@ -1468,13 +1830,9 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '2px',
     cursor: 'pointer',
     boxShadow: '0 0 20px rgba(219, 39, 119, 0.4)',
-    transition: 'opacity 0.2s, box-shadow 0.2s',
+    transition: 'opacity 0.2s',
   },
-  launchBtnDisabled: {
-    opacity: 0.6,
-    cursor: 'not-allowed',
-    boxShadow: 'none',
-  },
+  launchBtnDisabled: { opacity: 0.55, cursor: 'not-allowed', boxShadow: 'none' },
   doneBtn: {
     display: 'block',
     width: '100%',
@@ -1491,10 +1849,8 @@ const styles: Record<string, React.CSSProperties> = {
     textDecoration: 'none',
     boxSizing: 'border-box',
   },
-  // Navigation
   navRow: {
     display: 'flex',
-    justifyContent: 'space-between',
     gap: '12px',
   },
   backBtn: {
@@ -1522,12 +1878,8 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     boxShadow: '0 0 14px rgba(124, 58, 237, 0.4)',
   },
-  nextBtnDisabled: {
-    opacity: 0.4,
-    cursor: 'not-allowed',
-    boxShadow: 'none',
-  },
-  // Score panel
+  nextBtnDisabled: { opacity: 0.4, cursor: 'not-allowed', boxShadow: 'none' },
+  // Desktop score panel
   scorePanel: {
     background: 'rgba(13, 0, 32, 0.95)',
     border: '1px solid #3b0764',
@@ -1540,8 +1892,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '8px',
     letterSpacing: '2px',
     color: '#e879f9',
-    textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
-    marginBottom: '16px',
+    textShadow: '0 0 8px rgba(232, 121, 249, 0.4)',
     textAlign: 'center',
   },
   scoreCircle: {
@@ -1549,7 +1900,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'baseline',
     justifyContent: 'center',
     gap: '4px',
-    marginBottom: '12px',
+    margin: '12px 0 10px',
   },
   scoreNumber: {
     fontFamily: font,
@@ -1558,17 +1909,13 @@ const styles: Record<string, React.CSSProperties> = {
     textShadow: '0 0 20px currentColor',
     transition: 'color 0.3s',
   },
-  scoreMax: {
-    fontFamily: font,
-    fontSize: '10px',
-    color: '#3b0764',
-  },
+  scoreMax: { fontFamily: font, fontSize: '10px', color: '#3b0764' },
   scoreBarTrack: {
     height: '4px',
     background: '#1e0035',
     borderRadius: '2px',
     overflow: 'hidden',
-    marginBottom: '8px',
+    margin: '8px 0',
   },
   scoreBarFill: {
     height: '100%',
@@ -1581,18 +1928,10 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '1.5px',
     color: '#6d28d9',
     textAlign: 'center',
-    marginBottom: '16px',
+    marginBottom: '14px',
   },
-  scoreItems: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '7px',
-  },
-  scoreItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '7px',
-  },
+  scoreItems: { display: 'flex', flexDirection: 'column', gap: '7px' },
+  scoreItem: { display: 'flex', alignItems: 'flex-start', gap: '7px' },
   scoreItemLabel: {
     fontFamily: font,
     fontSize: '6px',
@@ -1608,14 +1947,63 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     transition: 'color 0.2s',
   },
+  // Mobile score panel
+  scorePanelMobile: {
+    background: 'rgba(13, 0, 32, 0.95)',
+    border: '1px solid #3b0764',
+    borderRadius: '10px',
+    padding: '12px 14px',
+    boxShadow: '0 0 16px rgba(124, 58, 237, 0.1)',
+  },
+  scoreMobileHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    cursor: 'pointer',
+    userSelect: 'none',
+    marginBottom: '8px',
+    minHeight: '36px',
+  },
+  scoreMobileSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  scoreMobileNumber: {
+    fontFamily: font,
+    fontSize: '18px',
+    lineHeight: 1,
+    textShadow: '0 0 10px currentColor',
+    transition: 'color 0.3s',
+  },
+  scoreMobileTier: {
+    fontFamily: font,
+    fontSize: '6px',
+    letterSpacing: '1px',
+    transition: 'color 0.3s',
+  },
+  scoreExpandIcon: {
+    fontFamily: font,
+    fontSize: '8px',
+    color: '#3b0764',
+    marginLeft: '2px',
+  },
+  scoreMobileBreakdown: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '7px',
+    marginTop: '10px',
+    paddingTop: '10px',
+    borderTop: '1px solid #1e0035',
+  },
   // Footer
   footer: {
     fontFamily: font,
-    fontSize: '7px',
+    fontSize: '6px',
     letterSpacing: '1.5px',
     color: '#1e0035',
     textAlign: 'center',
     marginTop: '40px',
-    padding: '0 20px',
+    padding: '0 16px',
   },
 };
