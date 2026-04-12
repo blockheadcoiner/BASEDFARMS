@@ -325,61 +325,87 @@ export interface BasedScoreBreakdown {
   items: { label: string; pts: number; earned: boolean }[];
 }
 
-export function calcBasedScore(params: Partial<LaunchParams> & { imageDataUri?: string }): BasedScoreBreakdown {
+/**
+ * Keys that must appear in `touched` before their criterion can be earned.
+ * Image / description / symbol infer "touched" from the value itself.
+ */
+export type ScoreTouchedKey =
+  | 'vestingEnabled'
+  | 'supply'
+  | 'curvePercent'
+  | 'targetSol'
+  | 'creatorFeeOn'
+  | 'initialBuy';
+
+export function calcBasedScore(
+  params: Partial<LaunchParams> & { imageDataUri?: string },
+  touched: Set<ScoreTouchedKey> = new Set(),
+): BasedScoreBreakdown {
+  const t = (key: ScoreTouchedKey) => touched.has(key);
+
   const items: { label: string; pts: number; earned: boolean }[] = [
     {
       label: 'Vesting enabled',
       pts: 20,
-      earned: !!params.vestingEnabled,
-    },
-    {
-      label: 'Supply ≤ 1 billion',
-      pts: 10,
-      earned: (params.supply ?? 0) > 0 && (params.supply ?? 0) <= 1_000_000_000,
+      // Only after the user explicitly toggles vesting on
+      earned: t('vestingEnabled') && !!params.vestingEnabled,
     },
     {
       label: 'Fair curve (≥ 79% sold on curve)',
       pts: 20,
-      earned: (params.curvePercent ?? 0) >= 79,
+      // Only after the user moves the slider
+      earned: t('curvePercent') && (params.curvePercent ?? 0) >= 79,
     },
     {
       label: 'Decent curve (≥ 65% sold on curve)',
       pts: 10,
-      earned: (params.curvePercent ?? 0) >= 65 && (params.curvePercent ?? 0) < 79,
+      earned: t('curvePercent') && (params.curvePercent ?? 0) >= 65 && (params.curvePercent ?? 0) < 79,
     },
     {
       label: 'Solid fundraise target (≥ 50 SOL)',
       pts: 15,
-      earned: (params.targetSol ?? 0) >= 50,
+      // Only after the user edits the target field
+      earned: t('targetSol') && (params.targetSol ?? 0) >= 50,
+    },
+    {
+      label: 'Supply ≤ 1 billion',
+      pts: 10,
+      // Only after the user edits the supply field
+      earned: t('supply') && (params.supply ?? 0) > 0 && (params.supply ?? 0) <= 1_000_000_000,
     },
     {
       label: 'Creator fees on SOL only',
       pts: 10,
-      earned: params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB,
+      // Only after the user clicks a creator fee option in step 3
+      earned: t('creatorFeeOn') && params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB,
     },
     {
       label: 'Conservative initial buy (≤ 1 SOL)',
       pts: 10,
-      earned: params.initialBuyLamports === 0 || (params.initialBuyLamports ?? 0) <= LAMPORTS_PER_SOL,
+      // Only after the user enables the initial buy toggle AND keeps it ≤ 1 SOL
+      earned: t('initialBuy') && (params.initialBuyLamports ?? 0) <= LAMPORTS_PER_SOL,
     },
     {
       label: 'Token image uploaded',
       pts: 5,
+      // Presence of the image IS the touch signal
       earned: !!(params.imageDataUri),
     },
     {
       label: 'Description provided',
       pts: 5,
+      // Typing >10 chars IS the touch signal
       earned: (params.description?.trim().length ?? 0) > 10,
     },
     {
       label: 'Symbol ≤ 6 characters',
       pts: 5,
+      // Typing anything IS the touch signal; must be ≤ 6 chars
       earned: (params.symbol?.length ?? 0) > 0 && (params.symbol?.length ?? 0) <= 6,
     },
   ];
 
-  // Only show one of fair/decent curve, not both
+  // Fair curve and decent curve are mutually exclusive — fair wins
   const fairEarned = items.find((i) => i.label.startsWith('Fair curve'))?.earned;
   if (fairEarned) {
     const decentIdx = items.findIndex((i) => i.label.startsWith('Decent'));

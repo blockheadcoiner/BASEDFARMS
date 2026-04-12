@@ -11,6 +11,7 @@ import {
   CpmmCreatorFeeOn,
   LAUNCH_FEE_LAMPORTS,
   type LaunchParams,
+  type ScoreTouchedKey,
 } from '@/services/launch';
 import { useWalletModal } from '@/components/WalletProvider';
 
@@ -216,11 +217,13 @@ function Toggle({
 
 function BasedScorePanel({
   form,
+  touched,
   isMobile,
   expanded,
   onToggle,
 }: {
   form: FormState;
+  touched: Set<ScoreTouchedKey>;
   isMobile: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -239,7 +242,7 @@ function BasedScorePanel({
     symbol: form.tokenSymbol,
   };
 
-  const { total, items } = calcBasedScore(scoreParams);
+  const { total, items } = calcBasedScore(scoreParams, touched);
 
   const scoreColor =
     total >= 80
@@ -383,10 +386,12 @@ function Step1({
   form,
   setForm,
   isMobile,
+  onTouch,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   isMobile: boolean;
+  onTouch: (key: ScoreTouchedKey) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -516,10 +521,12 @@ function Step2({
   form,
   setForm,
   isMobile,
+  onTouch,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   isMobile: boolean;
+  onTouch: (key: ScoreTouchedKey) => void;
 }) {
   const sellA = Math.round((form.supply * form.curvePercent) / 100);
   const reserved = form.supply - sellA;
@@ -532,9 +539,10 @@ function Step2({
         <Label>TOTAL SUPPLY</Label>
         <NumberInput
           value={form.supply}
-          onChange={(v) =>
-            setForm((f) => ({ ...f, supply: Math.max(1, Math.round(v)) }))
-          }
+          onChange={(v) => {
+            setForm((f) => ({ ...f, supply: Math.max(1, Math.round(v)) }));
+            onTouch('supply');
+          }}
           min={1}
           step={1_000_000}
         />
@@ -551,9 +559,10 @@ function Step2({
             max={100}
             step={0.01}
             value={form.curvePercent}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, curvePercent: parseFloat(e.target.value) }))
-            }
+            onChange={(e) => {
+              setForm((f) => ({ ...f, curvePercent: parseFloat(e.target.value) }));
+              onTouch('curvePercent');
+            }}
           />
           <span style={s.sliderValue}>{form.curvePercent.toFixed(2)}%</span>
         </div>
@@ -580,7 +589,10 @@ function Step2({
         <Label>SOL FUNDRAISING TARGET</Label>
         <NumberInput
           value={form.targetSol}
-          onChange={(v) => setForm((f) => ({ ...f, targetSol: Math.max(1, v) }))}
+          onChange={(v) => {
+            setForm((f) => ({ ...f, targetSol: Math.max(1, v) }));
+            onTouch('targetSol');
+          }}
           min={1}
           step={5}
         />
@@ -601,10 +613,12 @@ function Step3({
   form,
   setForm,
   isMobile,
+  onTouch,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   isMobile: boolean;
+  onTouch: (key: ScoreTouchedKey) => void;
 }) {
   const estimatedTokens = (() => {
     if (!form.initialBuyEnabled || form.initialBuySol <= 0) return 0;
@@ -672,7 +686,7 @@ function Step3({
       <div style={s.toggleSection}>
         <Toggle
           checked={form.vestingEnabled}
-          onChange={(v) => setForm((f) => ({ ...f, vestingEnabled: v }))}
+          onChange={(v) => { setForm((f) => ({ ...f, vestingEnabled: v })); onTouch('vestingEnabled'); }}
           label="VESTING (+20 BASED SCORE)"
         />
         {form.vestingEnabled && (
@@ -736,9 +750,10 @@ function Step3({
       <div style={s.toggleSection}>
         <Toggle
           checked={form.initialBuyEnabled}
-          onChange={(v) =>
-            setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }))
-          }
+          onChange={(v) => {
+            setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }));
+            onTouch('initialBuy');
+          }}
           label="INITIAL BUY AT LAUNCH"
         />
         {form.initialBuyEnabled && (
@@ -776,9 +791,10 @@ function Step3({
                 ? s.radioBtnActive
                 : {}),
             }}
-            onClick={() =>
-              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB }))
-            }
+            onClick={() => {
+              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB }));
+              onTouch('creatorFeeOn');
+            }}
           >
             SOL ONLY (RECOMMENDED)
           </button>
@@ -789,9 +805,10 @@ function Step3({
                 ? s.radioBtnActive
                 : {}),
             }}
-            onClick={() =>
-              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.BothToken }))
-            }
+            onClick={() => {
+              setForm((f) => ({ ...f, creatorFeeOn: CpmmCreatorFeeOn.BothToken }));
+              onTouch('creatorFeeOn');
+            }}
           >
             BOTH TOKENS
           </button>
@@ -1112,12 +1129,22 @@ export default function LaunchPage() {
   const isMobile = useMobile();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(DEFAULT);
+  const [touched, setTouched] = useState<Set<ScoreTouchedKey>>(new Set());
   const [status, setStatus] = useState<
     'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done'
   >('idle');
   const [error, setError] = useState<string | null>(null);
   const [txIds, setTxIds] = useState<string[]>([]);
   const [scoreExpanded, setScoreExpanded] = useState(false);
+
+  const markTouched = useCallback((key: ScoreTouchedKey) => {
+    setTouched((prev) => {
+      if (prev.has(key)) return prev; // avoid re-render if already set
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
 
   const { publicKey, signAllTransactions } = useWallet();
 
@@ -1193,6 +1220,7 @@ export default function LaunchPage() {
   const scorePanel = (
     <BasedScorePanel
       form={form}
+      touched={touched}
       isMobile={isMobile}
       expanded={scoreExpanded}
       onToggle={() => setScoreExpanded((v) => !v)}
@@ -1256,9 +1284,9 @@ export default function LaunchPage() {
         /* ── Mobile layout: single column, score above form ── */
         <div style={s.mobileLayout}>
           {scorePanel}
-          {step === 1 && <Step1 form={form} setForm={setForm} isMobile={isMobile} />}
-          {step === 2 && <Step2 form={form} setForm={setForm} isMobile={isMobile} />}
-          {step === 3 && <Step3 form={form} setForm={setForm} isMobile={isMobile} />}
+          {step === 1 && <Step1 form={form} setForm={setForm} isMobile={isMobile} onTouch={markTouched} />}
+          {step === 2 && <Step2 form={form} setForm={setForm} isMobile={isMobile} onTouch={markTouched} />}
+          {step === 3 && <Step3 form={form} setForm={setForm} isMobile={isMobile} onTouch={markTouched} />}
           {step === 4 && (
             <Step4
               form={form}
@@ -1275,9 +1303,9 @@ export default function LaunchPage() {
         /* ── Desktop layout: two-column ── */
         <div style={s.layout}>
           <div style={s.formCol}>
-            {step === 1 && <Step1 form={form} setForm={setForm} isMobile={false} />}
-            {step === 2 && <Step2 form={form} setForm={setForm} isMobile={false} />}
-            {step === 3 && <Step3 form={form} setForm={setForm} isMobile={false} />}
+            {step === 1 && <Step1 form={form} setForm={setForm} isMobile={false} onTouch={markTouched} />}
+            {step === 2 && <Step2 form={form} setForm={setForm} isMobile={false} onTouch={markTouched} />}
+            {step === 3 && <Step3 form={form} setForm={setForm} isMobile={false} onTouch={markTouched} />}
             {step === 4 && (
               <Step4
                 form={form}
