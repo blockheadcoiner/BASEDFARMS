@@ -68,9 +68,6 @@ const tickerSepStyle: React.CSSProperties = {
   padding: '0 8px',
 };
 
-function truncate(s: string, head = 6, tail = 4) {
-  return `${s.slice(0, head)}...${s.slice(-tail)}`;
-}
 
 export default function HomePage() {
   return (
@@ -172,15 +169,6 @@ export default function HomePage() {
               <div style={styles.farmSoonBadge}>
                 <span style={styles.farmSoonTop}>🌾 FARM</span>
                 <span style={styles.farmSoonBottom}>COMING SOON</span>
-              </div>
-            </div>
-
-            {/* Contract address */}
-            <div style={styles.contractRow}>
-              <span style={styles.contractLabel}>CONTRACT</span>
-              <div style={styles.contractBox}>
-                <span style={styles.contractFull}>{BGM_MINT}</span>
-                <span style={styles.contractShort}>{truncate(BGM_MINT, 8, 6)}</span>
               </div>
             </div>
 
@@ -591,39 +579,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '6px',
     letterSpacing: '1px',
     whiteSpace: 'nowrap',
-  },
-
-  // Contract
-  contractRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-    background: 'rgba(15, 0, 30, 0.7)',
-    border: '1px solid #2d0052',
-    borderRadius: '8px',
-    padding: '10px 14px',
-  },
-  contractLabel: {
-    color: '#3b0764',
-    fontSize: '7px',
-    letterSpacing: '3px',
-  },
-  contractBox: {
-    display: 'flex',
-  },
-  // Show full address on wide screens, truncated on narrow
-  contractFull: {
-    color: '#7c3aed',
-    fontSize: '8px',
-    letterSpacing: '1px',
-    wordBreak: 'break-all',
-    lineHeight: 1.8,
-    display: 'none',
-  },
-  contractShort: {
-    color: '#7c3aed',
-    fontSize: '9px',
-    letterSpacing: '1px',
   },
 
   // Stats

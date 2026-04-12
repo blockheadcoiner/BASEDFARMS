@@ -33,6 +33,7 @@ export default function FarmPage({ params }: Props) {
         <div style={styles.logo}>BASED<span style={styles.logoAccent}>FARMS</span></div>
         <div style={styles.headerRight}>
           <div style={styles.mintPill}>{shortMint}</div>
+          <div style={styles.basedBadge}>◈ BASEDFARMS</div>
           <Link href="/launch" style={styles.launchBtn}>+ LAUNCH</Link>
         </div>
       </header>
@@ -239,6 +240,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '8px',
     color: '#a855f7',
     letterSpacing: '1px',
+  },
+  basedBadge: {
+    background: 'linear-gradient(135deg, rgba(124,58,237,0.25), rgba(219,39,119,0.2))',
+    border: '1px solid rgba(219,39,119,0.35)',
+    borderRadius: '20px',
+    padding: '4px 8px',
+    fontSize: '6px',
+    color: '#f472b6',
+    letterSpacing: '1px',
+    whiteSpace: 'nowrap' as const,
+    textShadow: '0 0 8px rgba(244,114,182,0.4)',
   },
   launchBtn: {
     fontFamily: font,
