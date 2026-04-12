@@ -1308,8 +1308,17 @@ export default function LaunchPage() {
     </div>
   );
 
+  const isDevnet = process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet';
+
   return (
     <main style={s.page}>
+      {/* Devnet mode banner */}
+      {isDevnet && (
+        <div style={s.devnetBanner}>
+          ⚠ DEVNET MODE — Test launches only. No real SOL used.
+        </div>
+      )}
+
       {/* Header */}
       <header style={s.header}>
         <Link href="/" style={s.logo}>
@@ -1377,6 +1386,20 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: '100vh',
     background: '#0d0015',
     padding: '0 0 60px',
+    boxSizing: 'border-box',
+  },
+  devnetBanner: {
+    width: '100%',
+    background: 'rgba(245, 158, 11, 0.15)',
+    border: '1px solid rgba(245, 158, 11, 0.4)',
+    borderLeft: 'none',
+    borderRight: 'none',
+    color: '#f59e0b',
+    fontFamily: font,
+    fontSize: '7px',
+    letterSpacing: '1px',
+    textAlign: 'center',
+    padding: '10px 16px',
     boxSizing: 'border-box',
   },
   header: {

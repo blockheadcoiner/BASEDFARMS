@@ -8,6 +8,7 @@ import {
   Raydium,
   TxVersion,
   LAUNCHPAD_PROGRAM,
+  DEVNET_PROGRAM_ID,
   getPdaLaunchpadConfigId,
   getPdaLaunchpadPoolId,
   LaunchpadConfig,
@@ -45,6 +46,19 @@ const SHARE_FEE_RATE = new BN(30); // 30 bps
 /** Fixed BASEDFARMS launch fee in lamports (0.1 SOL) */
 export const LAUNCH_FEE_LAMPORTS = Math.round(0.1 * LAMPORTS_PER_SOL);
 
+/** True when NEXT_PUBLIC_LAUNCH_NETWORK=devnet is set in env */
+export const IS_DEVNET = process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet';
+
+/** Program ID — devnet or mainnet depending on IS_DEVNET */
+export const LAUNCH_PROGRAM_ID = IS_DEVNET
+  ? DEVNET_PROGRAM_ID.LAUNCHPAD_PROGRAM
+  : LAUNCHPAD_PROGRAM;
+
+/** RPC endpoint — devnet or env-configured mainnet */
+export const LAUNCH_RPC: string = IS_DEVNET
+  ? 'https://api.devnet.solana.com'
+  : (process.env.NEXT_PUBLIC_RPC_URL ?? 'https://api.mainnet-beta.solana.com');
+
 /** Raydium constant-product config for SOL pools (index 0, curveType 0) */
 const CURVE_TYPE = 0;
 const CONFIG_INDEX = 0;
@@ -63,26 +77,21 @@ function getPlatformId(): PublicKey | undefined {
 
 /* ── RPC ──────────────────────────────────────────────────────────────────── */
 
-const RPC_URL = (() => {
-  const url = process.env.NEXT_PUBLIC_RPC_URL;
-  if (url && url.startsWith('https://')) return url;
-  return 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
-})();
-
 function getConn(): Connection {
-  return new Connection(RPC_URL, 'confirmed');
+  return new Connection(LAUNCH_RPC, 'confirmed');
 }
 
 async function loadRaydium(owner: PublicKey): Promise<Raydium> {
   const connection = getConn();
+  // Proxy rewrites only make sense on mainnet; devnet calls the API directly
   const urlConfigs =
-    typeof window !== 'undefined'
+    !IS_DEVNET && typeof window !== 'undefined'
       ? { BASE_HOST: '/api/raydium-v3', SWAP_HOST: '/api/raydium' }
       : {};
   return Raydium.load({
     connection,
     owner,
-    cluster: 'mainnet',
+    cluster: IS_DEVNET ? 'devnet' : 'mainnet',
     disableLoadToken: true,
     disableFeatureCheck: true,
     blockhashCommitment: 'confirmed',
@@ -198,7 +207,7 @@ export async function createToken(
 
   // ── Derive config PDA ──────────────────────────────────────────────────────
   const configId = getPdaLaunchpadConfigId(
-    LAUNCHPAD_PROGRAM,
+    LAUNCH_PROGRAM_ID,
     NATIVE_MINT,
     CURVE_TYPE,
     CONFIG_INDEX,
@@ -251,7 +260,7 @@ export async function createToken(
   }
 
   const result = await raydium.launchpad.createLaunchpad({
-    programId: LAUNCHPAD_PROGRAM,
+    programId: LAUNCH_PROGRAM_ID,
     mintA: mintKeypair.publicKey,
     name: params.name,
     symbol: params.symbol,
