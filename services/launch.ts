@@ -27,10 +27,14 @@ import BN from 'bn.js';
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
 /**
- * BASEDFARMS treasury address (replace with real wallet before mainnet launch).
- * Lazy getter so it isn't evaluated during SSR module initialisation.
+ * BASEDFARMS treasury — receives the 0.1 SOL launch fee and 0.3% trade share.
+ * Reads from NEXT_PUBLIC_TREASURY_WALLET env var; falls back to hardcoded address.
+ * Lazy getter so PublicKey is never constructed during SSR module initialisation.
  */
-const TREASURY_ADDRESS = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'; // TODO: replace
+const TREASURY_ADDRESS =
+  process.env.NEXT_PUBLIC_TREASURY_WALLET ??
+  '6MB3syAmv6rmVavKxZveDdPYrmmwGcwoM2BfkDbfkQd8';
+
 function getTreasury(): PublicKey {
   return new PublicKey(TREASURY_ADDRESS);
 }
