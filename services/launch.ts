@@ -252,17 +252,12 @@ export async function createToken(
 
   // ── Build the launchpad transaction(s) ────────────────────────────────────
   console.log('[Launch] calling raydium.launchpad.createLaunchpad...');
-  // Platform ID is mainnet-only — devnet has no registered platform config.
-  const platformId = IS_DEVNET ? undefined : getPlatformId();
-  if (IS_DEVNET) {
-    console.log('[Launch] devnet mode — skipping platformId');
-  } else if (platformId) {
-    console.log('[Launch] using platformId:', platformId.toBase58());
-  } else {
-    console.warn('[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config');
-  }
 
-  const result = await raydium.launchpad.createLaunchpad({
+  // Build config as a mutable object so platformId is physically absent on devnet.
+  // The mainnet platform ID (32SyS4S…) does not exist on devnet — passing it
+  // causes a "platform id not found" error, so we never include it when IS_DEVNET.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const launchConfig: Record<string, any> = {
     programId: LAUNCH_PROGRAM_ID,
     mintA: mintKeypair.publicKey,
     name: params.name,
@@ -271,7 +266,6 @@ export async function createToken(
     decimals: params.decimals,
     configId,
     configInfo,
-    ...(platformId ? { platformId } : {}),
     migrateType: 'cpmm',
     supply: supplyRaw,
     totalSellA,
@@ -294,9 +288,29 @@ export async function createToken(
     extraSigners: [mintKeypair],
     txVersion: TxVersion.LEGACY,
     computeBudgetConfig: { units: 800_000, microLamports: 150_000 },
-  });
+  };
 
-  const { transactions, signers, extInfo } = result;
+  if (!IS_DEVNET) {
+    const pid = getPlatformId();
+    if (pid) {
+      launchConfig.platformId = pid;
+      console.log('[Launch] using platformId:', pid.toBase58());
+    } else {
+      console.warn('[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config');
+    }
+  } else {
+    console.log('[Launch] devnet mode — platformId omitted');
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await raydium.launchpad.createLaunchpad(launchConfig as any) as any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { transactions, signers, extInfo } = result as {
+    transactions: Transaction[];
+    signers: Keypair[][];
+    extInfo: { address: { poolId: { toBase58(): string } } };
+  };
   const poolId = extInfo.address.poolId.toBase58();
   const mintAddress = mintKeypair.publicKey.toBase58();
 
