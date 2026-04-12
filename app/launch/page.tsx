@@ -300,13 +300,13 @@ function ScoreItemsList({
             <div style={s.scoreCategory}>{cat}</div>
             {catItems.map((item) => (
               <div key={item.label} style={s.scoreItem}>
-                <span style={{ color: item.earned ? '#22c55e' : '#3b0764', fontSize: '8px', flexShrink: 0 }}>
+                <span style={{ color: item.earned ? '#22c55e' : 'rgba(255,255,255,0.4)', fontSize: '8px', flexShrink: 0 }}>
                   {item.earned ? '✓' : '○'}
                 </span>
-                <span style={{ ...s.scoreItemLabel, color: item.earned ? '#c084fc' : '#4c1d95' }}>
+                <span style={{ ...s.scoreItemLabel, color: item.earned ? '#c084fc' : 'rgba(255,255,255,0.4)' }}>
                   {item.label}
                 </span>
-                <span style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : '#3b0764' }}>
+                <span style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : 'rgba(255,255,255,0.4)' }}>
                   +{item.pts}
                 </span>
               </div>
@@ -1466,7 +1466,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   // Cards
   card: {
-    background: 'rgba(13, 0, 32, 0.9)',
+    background: 'rgba(255,255,255,0.05)',
     border: '1px solid #3b0764',
     boxShadow:
       '0 0 30px rgba(124, 58, 237, 0.12), inset 0 0 20px rgba(88, 28, 135, 0.04)',
@@ -1480,7 +1480,7 @@ const s: Record<string, React.CSSProperties> = {
     textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
     marginBottom: '20px',
     paddingBottom: '12px',
-    borderBottom: '1px solid #1e0035',
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
   field: {
     display: 'flex',
@@ -1492,14 +1492,14 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1.5px',
-    color: '#7c3aed',
+    color: '#e2b4ff',
   },
   required: { color: '#db2777' },
   hint: {
     fontFamily: font,
     fontSize: '6px',
     letterSpacing: '1px',
-    color: '#4c1d95',
+    color: 'rgba(255,255,255,0.6)',
     lineHeight: 1.6,
   },
   input: {
@@ -1507,7 +1507,7 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid #3b0764',
     borderRadius: '8px',
     padding: '11px 12px',
-    color: '#c084fc',
+    color: '#ffffff',
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '1px',
@@ -1526,7 +1526,7 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid #3b0764',
     borderRadius: '8px',
     padding: '11px 12px',
-    color: '#c084fc',
+    color: '#ffffff',
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '1px',
@@ -1768,7 +1768,7 @@ const s: Record<string, React.CSSProperties> = {
   reviewLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#4c1d95',
+    color: '#e2b4ff',
     letterSpacing: '1px',
     flexShrink: 0,
   },
@@ -1790,7 +1790,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '2px',
-    color: '#7c3aed',
+    color: '#e2b4ff',
     marginBottom: '10px',
   },
   costRows: { display: 'flex', flexDirection: 'column', gap: '8px' },
@@ -1803,7 +1803,7 @@ const s: Record<string, React.CSSProperties> = {
   costLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#6d28d9',
+    color: 'rgba(255,255,255,0.6)',
     letterSpacing: '1px',
   },
   costValue: { fontFamily: font, fontSize: '7px', color: '#c084fc' },
@@ -1950,7 +1950,7 @@ const s: Record<string, React.CSSProperties> = {
   nextBtnDisabled: { opacity: 0.4, cursor: 'not-allowed', boxShadow: 'none' },
   // Desktop score panel
   scorePanel: {
-    background: 'rgba(13, 0, 32, 0.95)',
+    background: 'rgba(255,255,255,0.05)',
     border: '1px solid #3b0764',
     borderRadius: '14px',
     padding: '20px',
@@ -2018,7 +2018,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   // Mobile score panel
   scorePanelMobile: {
-    background: 'rgba(13, 0, 32, 0.95)',
+    background: 'rgba(255,255,255,0.05)',
     border: '1px solid #3b0764',
     borderRadius: '10px',
     padding: '12px 14px',
@@ -2069,7 +2069,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '5px',
     letterSpacing: '2px',
-    color: '#4c1d95',
+    color: '#a78bfa',
     marginTop: '10px',
     marginBottom: '5px',
     textTransform: 'uppercase' as const,

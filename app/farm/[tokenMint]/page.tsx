@@ -156,7 +156,7 @@ export default function FarmPage({ params }: Props) {
 
             <div style={styles.infoRow}>
               <span style={styles.infoKey}>DEX ROUTER</span>
-              <span style={styles.infoVal}>JUPITER V6</span>
+              <span style={styles.infoVal}>RAYDIUM LAUNCHLAB</span>
             </div>
 
             <div style={styles.infoRow}>
@@ -196,7 +196,7 @@ export default function FarmPage({ params }: Props) {
 
       {/* Footer */}
       <footer style={styles.footer}>
-        BASEDFARMS.fun · BUILT ON SOLANA · POWERED BY JUPITER
+        BASEDFARMS.fun · BUILT ON SOLANA · POWERED BY RAYDIUM
       </footer>
     </main>
   );
