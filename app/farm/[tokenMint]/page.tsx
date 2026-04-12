@@ -3,6 +3,7 @@
 import { useState, use } from 'react';
 import Link from 'next/link';
 import SwapWidget from '@/components/swap/SwapWidget';
+import FarmsTab from '@/components/farms/FarmsTab';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
 
@@ -128,15 +129,7 @@ export default function FarmPage({ params }: Props) {
 
         {/* ── FARMS TAB ── */}
         {activeTab === 'farms' && (
-          <div style={styles.emptyCard}>
-            <div style={styles.emptyIcon}>◈</div>
-            <div style={styles.emptyTitle}>NO FARMS DEPLOYED YET</div>
-            <div style={styles.emptyBody}>
-              Liquidity farms for this token have not been initialized.
-              Check back soon or deploy one via the BASEDFARMS launchpad.
-            </div>
-            <button style={styles.emptyBtn} disabled>DEPLOY FARM — COMING SOON</button>
-          </div>
+          <FarmsTab tokenMint={tokenMint} />
         )}
 
         {/* ── INFO TAB ── */}
@@ -419,48 +412,6 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '1px',
     textDecoration: 'none',
     borderBottom: '1px solid #7c3aed',
-  },
-
-  // Farms empty state
-  emptyCard: {
-    background: 'linear-gradient(160deg, #0d0015 0%, #100020 100%)',
-    border: '1px solid #3b0764',
-    borderRadius: '12px',
-    padding: '40px 24px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '16px',
-    textAlign: 'center',
-  },
-  emptyIcon: {
-    fontSize: '32px',
-    color: '#3b0764',
-    textShadow: '0 0 20px rgba(59, 7, 100, 0.8)',
-  },
-  emptyTitle: {
-    color: '#7c3aed',
-    fontSize: '11px',
-    letterSpacing: '2px',
-  },
-  emptyBody: {
-    color: '#4c1d95',
-    fontSize: '8px',
-    lineHeight: '1.8',
-    letterSpacing: '1px',
-    maxWidth: '280px',
-  },
-  emptyBtn: {
-    fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
-    padding: '12px 16px',
-    background: 'rgba(88, 28, 135, 0.15)',
-    border: '1px solid #3b0764',
-    borderRadius: '8px',
-    color: '#3b0764',
-    cursor: 'not-allowed',
-    marginTop: '8px',
   },
 
   // Info tab
