@@ -482,14 +482,18 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
         <div style={styles.errorBox}>
           <span style={styles.errorText}>✗ {errorMessages[swapError]}</span>
           {swapError === 'NO_LIQUIDITY' && (
-            <a
-              href={`https://letsbonk.fun/token/${tokenMint}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={styles.letsbonkLink}
-            >
-              TRADE ON LETSBONK.FUN ↗
-            </a>
+            process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet'
+              ? <span style={{ ...styles.letsbonkLink, cursor: 'default', textDecoration: 'none', opacity: 0.6 }}>
+                  ◈ BONDING CURVE INITIALIZING...
+                </span>
+              : <a
+                  href={`https://letsbonk.fun/token/${tokenMint}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.letsbonkLink}
+                >
+                  TRADE ON LETSBONK.FUN ↗
+                </a>
           )}
         </div>
       )}

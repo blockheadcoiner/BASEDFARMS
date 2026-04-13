@@ -14,6 +14,7 @@ import {
   LaunchpadPool,
   getPdaLaunchpadPoolId,
   LAUNCHPAD_PROGRAM,
+  DEVNET_PROGRAM_ID,
   type ApiV3PoolInfoStandardItemCpmm,
   type CpmmKeys,
   type CpmmComputeData,
@@ -22,6 +23,12 @@ import { NATIVE_MINT } from '@solana/spl-token';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import type { NormalizedQuote } from './types';
+
+/** True when NEXT_PUBLIC_LAUNCH_NETWORK=devnet — baked at Next.js startup */
+const IS_DEVNET = process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet';
+
+/** Launchpad program ID — devnet or mainnet */
+const LAUNCH_PROGRAM_ID = IS_DEVNET ? DEVNET_PROGRAM_ID.LAUNCHPAD_PROGRAM : LAUNCHPAD_PROGRAM;
 
 export type { NormalizedQuote };
 
@@ -40,11 +47,13 @@ if (typeof window !== 'undefined') {
 
 /* ── RPC connection ─────────────────────────────────────────────────────── */
 
-const RPC_URL = (() => {
-  const url = process.env.NEXT_PUBLIC_RPC_URL;
-  if (url && url.startsWith('https://')) return url;
-  return 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
-})();
+const RPC_URL = IS_DEVNET
+  ? 'https://api.devnet.solana.com'
+  : (() => {
+      const url = process.env.NEXT_PUBLIC_RPC_URL;
+      if (url && url.startsWith('https://')) return url;
+      return 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
+    })();
 
 console.log('[Raydium] RPC_URL:', RPC_URL);
 
@@ -87,14 +96,14 @@ interface LaunchpadQuoteResult {
 /** Create a lightweight Raydium SDK instance — no token loading, fast init */
 async function loadRaydium(owner?: PublicKey): Promise<Raydium> {
   const connection = getConn();
-  // In the browser, proxy API calls through Next.js rewrites to avoid CORS
-  const urlConfigs = typeof window !== 'undefined'
+  // Proxy rewrites only make sense on mainnet; devnet calls the API directly
+  const urlConfigs = !IS_DEVNET && typeof window !== 'undefined'
     ? { BASE_HOST: '/api/raydium-v3', SWAP_HOST: '/api/raydium' }
     : {};
   return Raydium.load({
     connection,
     owner,
-    cluster: 'mainnet',
+    cluster: IS_DEVNET ? 'devnet' : 'mainnet',
     disableLoadToken: true,
     disableFeatureCheck: true,
     blockhashCommitment: 'confirmed',
@@ -319,11 +328,13 @@ export async function getLaunchpadQuote(
     direction,
   });
 
+  console.log('[Raydium/Launchpad] IS_DEVNET:', IS_DEVNET, '| program:', LAUNCH_PROGRAM_ID.toBase58().slice(0, 8) + '…');
+
   const connection = getConn();
   const mintAPk = new PublicKey(mintA);
 
   // Derive deterministic pool PDA from program + mintA + NATIVE_MINT
-  const poolId = getPdaLaunchpadPoolId(LAUNCHPAD_PROGRAM, mintAPk, NATIVE_MINT).publicKey;
+  const poolId = getPdaLaunchpadPoolId(LAUNCH_PROGRAM_ID, mintAPk, NATIVE_MINT).publicKey;
   console.log('[Raydium/Launchpad] pool PDA:', poolId.toBase58());
 
   // Fetch pool account
@@ -400,7 +411,7 @@ export async function getLaunchpadQuote(
 
   const raw: LaunchpadQuoteResult = {
     mintA,
-    programId: LAUNCHPAD_PROGRAM,
+    programId: LAUNCH_PROGRAM_ID,
     direction,
     amountIn: amountBN,
     amountOut: outAmount,
