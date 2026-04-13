@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Transaction, VersionedTransaction } from '@solana/web3.js';
 import { useWalletModal } from '@/components/WalletProvider';
-import { createPlatform, derivePlatformId } from '@/services/platform';
+import { createPlatform, derivePlatformId, IS_DEVNET } from '@/services/platform';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
 
@@ -45,7 +45,10 @@ export default function PlatformSetupPage() {
     () => (publicKey ? derivePlatformId(publicKey) : null),
     [publicKey],
   );
-  const platformIdEnv = process.env.NEXT_PUBLIC_PLATFORM_ID || null;
+  // Read the correct env var depending on network
+  const platformIdEnv = IS_DEVNET
+    ? (process.env.NEXT_PUBLIC_DEVNET_PLATFORM_ID || null)
+    : (process.env.NEXT_PUBLIC_PLATFORM_ID || null);
 
   const handleCreate = useCallback(async () => {
     if (!publicKey || !signAllTransactions || !isTreasuryWallet) return;
@@ -72,16 +75,29 @@ export default function PlatformSetupPage() {
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={s.header}>
           <div style={s.title}>◈ BASEDFARMS PLATFORM SETUP</div>
-          <div style={s.subtitle}>ONE-TIME REGISTRATION · RAYDIUM LAUNCHLAB</div>
+          <div style={s.subtitle}>
+            ONE-TIME REGISTRATION · RAYDIUM LAUNCHLAB
+            {IS_DEVNET && <span style={s.devnetChip}> · DEVNET</span>}
+          </div>
         </div>
+
+        {/* Devnet mode banner */}
+        {IS_DEVNET && (
+          <div style={s.devnetBanner}>
+            ⚠ DEVNET MODE — This will register a platform on Solana devnet.
+            After creation, add NEXT_PUBLIC_DEVNET_PLATFORM_ID to .env.local and restart dev server.
+          </div>
+        )}
 
         {/* ── Run-once warning ───────────────────────────────────────────── */}
         <div style={s.onceCard}>
           <div style={s.onceIcon}>⚠</div>
           <div style={s.onceText}>
-            Run this ONCE. The platform ID is derived from the connected wallet.
-            After creation, store the platformId in NEXT_PUBLIC_PLATFORM_ID and redeploy.
-            Every token launched after that earns BASEDFARMS fees forever.
+            Run this ONCE per network. The platform ID is derived from the connected wallet.
+            After creation, store the platformId in{' '}
+            {IS_DEVNET ? 'NEXT_PUBLIC_DEVNET_PLATFORM_ID' : 'NEXT_PUBLIC_PLATFORM_ID'}{' '}
+            and restart.
+            {!IS_DEVNET && ' Every token launched after that earns BASEDFARMS fees forever.'}
           </div>
         </div>
 
@@ -196,38 +212,66 @@ export default function PlatformSetupPage() {
             )}
             {!platformIdEnv && (
               <div style={s.envCard}>
-                <div style={s.envTitle}>⚠ SAVE TO ENV — REQUIRED BEFORE REDEPLOYING</div>
+                <div style={s.envTitle}>
+                  {IS_DEVNET
+                    ? '⚠ SAVE TO .env.local — THEN RESTART DEV SERVER'
+                    : '⚠ SAVE TO ENV — REQUIRED BEFORE REDEPLOYING'}
+                </div>
                 <div style={s.envStep}>
                   <span style={s.envStepNum}>1</span>
                   <div style={s.envStepBody}>
                     <div style={s.envInstruction}>Add to .env.local:</div>
                     <div style={s.envLineRow}>
-                      <code style={s.envCode}>NEXT_PUBLIC_PLATFORM_ID={platformId}</code>
-                      <CopyBtn text={`NEXT_PUBLIC_PLATFORM_ID=${platformId}`} />
+                      {IS_DEVNET ? (
+                        <>
+                          <code style={s.envCode}>NEXT_PUBLIC_DEVNET_PLATFORM_ID={platformId}</code>
+                          <CopyBtn text={`NEXT_PUBLIC_DEVNET_PLATFORM_ID=${platformId}`} />
+                        </>
+                      ) : (
+                        <>
+                          <code style={s.envCode}>NEXT_PUBLIC_PLATFORM_ID={platformId}</code>
+                          <CopyBtn text={`NEXT_PUBLIC_PLATFORM_ID=${platformId}`} />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-                <div style={s.envStep}>
-                  <span style={s.envStepNum}>2</span>
-                  <div style={s.envStepBody}>
-                    <div style={s.envInstruction}>Add to Vercel:</div>
-                    <div style={s.envLineRow}>
-                      <code style={s.envCode}>vercel env add NEXT_PUBLIC_PLATFORM_ID</code>
-                      <CopyBtn text="vercel env add NEXT_PUBLIC_PLATFORM_ID" />
+                {IS_DEVNET ? (
+                  <div style={s.envStep}>
+                    <span style={s.envStepNum}>2</span>
+                    <div style={s.envStepBody}>
+                      <div style={s.envInstruction}>
+                        Restart dev server: pkill -f &quot;next dev&quot; &amp;&amp; npm run dev
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div style={s.envStep}>
-                  <span style={s.envStepNum}>3</span>
-                  <div style={s.envStepBody}>
-                    <div style={s.envInstruction}>Redeploy. Every token launched after that routes fees here.</div>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div style={s.envStep}>
+                      <span style={s.envStepNum}>2</span>
+                      <div style={s.envStepBody}>
+                        <div style={s.envInstruction}>Add to Vercel (production only — do NOT add devnet ID here):</div>
+                        <div style={s.envLineRow}>
+                          <code style={s.envCode}>vercel env add NEXT_PUBLIC_PLATFORM_ID</code>
+                          <CopyBtn text="vercel env add NEXT_PUBLIC_PLATFORM_ID" />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={s.envStep}>
+                      <span style={s.envStepNum}>3</span>
+                      <div style={s.envStepBody}>
+                        <div style={s.envInstruction}>Redeploy. Every token launched after that routes fees here.</div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {platformIdEnv && (
               <div style={s.envDone}>
-                ✓ NEXT_PUBLIC_PLATFORM_ID is set in env — all new launches will earn platform fees.
+                {IS_DEVNET
+                  ? '✓ NEXT_PUBLIC_DEVNET_PLATFORM_ID is set — devnet launches will use this platform.'
+                  : '✓ NEXT_PUBLIC_PLATFORM_ID is set in env — all new launches will earn platform fees.'}
               </div>
             )}
           </div>
@@ -297,6 +341,8 @@ const s: Record<string, React.CSSProperties> = {
   title: { fontFamily: font, fontSize: '12px', letterSpacing: '2px', color: '#e879f9', textShadow: '0 0 20px rgba(232,121,249,0.5)', marginBottom: '8px' },
   subtitle: { fontFamily: font, fontSize: '6px', letterSpacing: '2.5px', color: 'rgba(255,255,255,0.6)' },
 
+  devnetBanner: { fontFamily: font, fontSize: '6px', letterSpacing: '0.5px', lineHeight: 1.8, padding: '10px 14px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px', color: '#f59e0b' },
+  devnetChip: { color: '#f59e0b', fontSize: '7px', letterSpacing: '1px' },
   onceCard: { display: 'flex', gap: '12px', padding: '14px', background: 'rgba(245,158,11,0.06)', border: '1px solid #78350f', borderRadius: '10px', alignItems: 'flex-start' },
   onceIcon: { fontFamily: font, fontSize: '10px', color: '#f59e0b', flexShrink: 0 },
   onceText: { fontFamily: font, fontSize: '5.5px', color: '#d97706', letterSpacing: '0.3px', lineHeight: 1.9 },

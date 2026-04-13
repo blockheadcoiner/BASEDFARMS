@@ -64,13 +64,18 @@ const CURVE_TYPE = 0;
 const CONFIG_INDEX = 0;
 
 /**
- * BASEDFARMS platform ID — set via NEXT_PUBLIC_PLATFORM_ID env var.
- * Created once with the admin wallet via app/admin. When set, every
- * createLaunchpad() call registers the pool under the BASEDFARMS platform,
- * routing LP fees and Fee Key NFTs to the platform wallets at graduation.
+ * BASEDFARMS platform ID — network-aware.
+ *
+ * Mainnet: reads NEXT_PUBLIC_PLATFORM_ID (registered via /admin on mainnet)
+ * Devnet:  reads NEXT_PUBLIC_DEVNET_PLATFORM_ID (registered via /admin on devnet)
+ *
+ * The Raydium SDK always requires a registered platform account to exist.
+ * Create it once per network via /admin/platform, then store the ID here.
  */
 function getPlatformId(): PublicKey | undefined {
-  const id = process.env.NEXT_PUBLIC_PLATFORM_ID;
+  const id = IS_DEVNET
+    ? process.env.NEXT_PUBLIC_DEVNET_PLATFORM_ID
+    : process.env.NEXT_PUBLIC_PLATFORM_ID;
   if (!id) return undefined;
   try { return new PublicKey(id); } catch { return undefined; }
 }
@@ -251,6 +256,7 @@ export async function createToken(
   const minMintAAmount = new BN(0);
 
   // ── Build the launchpad transaction(s) ────────────────────────────────────
+  console.log('[Launch] IS_DEVNET:', IS_DEVNET);
   console.log('[Launch] calling raydium.launchpad.createLaunchpad...');
 
   // Build config as a mutable object so platformId is physically absent on devnet.
@@ -290,17 +296,24 @@ export async function createToken(
     computeBudgetConfig: { units: 800_000, microLamports: 150_000 },
   };
 
-  if (!IS_DEVNET) {
-    const pid = getPlatformId();
-    if (pid) {
-      launchConfig.platformId = pid;
-      console.log('[Launch] using platformId:', pid.toBase58());
-    } else {
-      console.warn('[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config');
-    }
+  const pid = getPlatformId();
+  if (pid) {
+    launchConfig.platformId = pid;
+    console.log('[Launch] using platformId:', pid.toBase58(), IS_DEVNET ? '(devnet)' : '(mainnet)');
   } else {
-    console.log('[Launch] devnet mode — platformId omitted');
+    // SDK auto-derives platform from owner wallet and requires the account on-chain.
+    // Without a registered platform the launch will fail with "platform id not found".
+    // Fix: go to /admin/platform and create the platform for this network, then set
+    // NEXT_PUBLIC_DEVNET_PLATFORM_ID (devnet) or NEXT_PUBLIC_PLATFORM_ID (mainnet).
+    console.warn(
+      IS_DEVNET
+        ? '[Launch] NEXT_PUBLIC_DEVNET_PLATFORM_ID not set — create devnet platform at /admin/platform first'
+        : '[Launch] NEXT_PUBLIC_PLATFORM_ID not set — launching without platform config'
+    );
   }
+
+  console.log('[Launch] launchConfig keys:', Object.keys(launchConfig));
+  console.log('[Launch] launchConfig.platformId:', launchConfig.platformId?.toBase58?.() ?? 'NOT SET');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await raydium.launchpad.createLaunchpad(launchConfig as any) as any;

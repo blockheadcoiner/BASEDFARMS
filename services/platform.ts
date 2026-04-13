@@ -26,6 +26,7 @@ import {
   Raydium as RaydiumSDK,
   TxVersion,
   LAUNCHPAD_PROGRAM,
+  DEVNET_PROGRAM_ID,
   LOCK_CPMM_PROGRAM,
   LOCK_CPMM_AUTH,
   getPdaPlatformId,
@@ -39,13 +40,22 @@ import {
 import { NATIVE_MINT } from '@solana/spl-token';
 import BN from 'bn.js';
 
-/* ── RPC ─────────────────────────────────────────────────────────────────── */
+/* ── Network config ──────────────────────────────────────────────────────── */
 
-const RPC_URL = (() => {
+export const IS_DEVNET = process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet';
+
+const MAINNET_RPC = (() => {
   const url = process.env.NEXT_PUBLIC_RPC_URL;
   if (url && url.startsWith('https://')) return url;
   return 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121';
 })();
+
+const RPC_URL = IS_DEVNET ? 'https://api.devnet.solana.com' : MAINNET_RPC;
+
+/** Program ID for platform operations — devnet or mainnet */
+export const PLATFORM_PROGRAM_ID = IS_DEVNET
+  ? DEVNET_PROGRAM_ID.LAUNCHPAD_PROGRAM
+  : LAUNCHPAD_PROGRAM;
 
 function getConn(): Connection {
   return new Connection(RPC_URL, 'confirmed');
@@ -54,13 +64,13 @@ function getConn(): Connection {
 async function loadRaydium(owner: PublicKey): Promise<RaydiumSDK> {
   const connection = getConn();
   const urlConfigs =
-    typeof window !== 'undefined'
+    !IS_DEVNET && typeof window !== 'undefined'
       ? { BASE_HOST: '/api/raydium-v3', SWAP_HOST: '/api/raydium' }
       : {};
   return RaydiumSDK.load({
     connection,
     owner,
-    cluster: 'mainnet',
+    cluster: IS_DEVNET ? 'devnet' : 'mainnet',
     disableLoadToken: true,
     disableFeatureCheck: true,
     blockhashCommitment: 'confirmed',
@@ -170,13 +180,13 @@ export async function createPlatform(
 
   // Load Raydium with signAllTransactions so execute() can sign V0 txs
   const urlConfigs =
-    typeof window !== 'undefined'
+    !IS_DEVNET && typeof window !== 'undefined'
       ? { BASE_HOST: '/api/raydium-v3', SWAP_HOST: '/api/raydium' }
       : {};
   const raydium = await RaydiumSDK.load({
     connection,
     owner: adminPublicKey,
-    cluster: 'mainnet',
+    cluster: IS_DEVNET ? 'devnet' : 'mainnet',
     disableLoadToken: true,
     disableFeatureCheck: true,
     blockhashCommitment: 'confirmed',
@@ -184,11 +194,11 @@ export async function createPlatform(
     urlConfigs,
   });
 
-  const derivedPlatformId = getPdaPlatformId(LAUNCHPAD_PROGRAM, adminPublicKey).publicKey;
-  console.log('[Platform] derived platformId:', derivedPlatformId.toBase58());
+  const derivedPlatformId = getPdaPlatformId(PLATFORM_PROGRAM_ID, adminPublicKey).publicKey;
+  console.log('[Platform] derived platformId:', derivedPlatformId.toBase58(), IS_DEVNET ? '(devnet)' : '(mainnet)');
 
   const { execute, extInfo } = await raydium.launchpad.createPlatformConfig({
-    programId: LAUNCHPAD_PROGRAM,
+    programId: PLATFORM_PROGRAM_ID,
     platformAdmin: adminPublicKey,
     platformClaimFeeWallet: getTreasury(),   // Stream 2 claims → treasury
     platformLockNftWallet: getTreasury(),    // Fee Key NFTs → treasury
@@ -222,7 +232,7 @@ export async function createPlatform(
  * Use to preview the platformId before creating it.
  */
 export function derivePlatformId(adminPublicKey: PublicKey): string {
-  return getPdaPlatformId(LAUNCHPAD_PROGRAM, adminPublicKey).publicKey.toBase58();
+  return getPdaPlatformId(PLATFORM_PROGRAM_ID, adminPublicKey).publicKey.toBase58();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
