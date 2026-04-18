@@ -15,7 +15,8 @@ import {
 } from '@/services/launch';
 import { useWalletModal } from '@/components/WalletProvider';
 
-const font = 'var(--font-press-start), "Courier New", monospace';
+const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
+const pressStart = 'var(--font-press-start), "Courier New", monospace';
 
 /* ── Responsive hook ──────────────────────────────────────────────────────── */
 
@@ -227,7 +228,7 @@ function Toggle({
       <div
         style={{
           ...s.toggleTrack,
-          background: checked ? '#db2777' : '#1e0035',
+          background: checked ? '#f97316' : '#1a1a1a',
           flexShrink: 0,
         }}
       >
@@ -505,7 +506,7 @@ function Step1({
         <div
           style={{
             ...s.imageUpload,
-            borderColor: form.imageDataUri ? '#db2777' : '#3b0764',
+            borderColor: form.imageDataUri ? '#f97316' : '#222222',
           }}
           onClick={() => fileRef.current?.click()}
         >
@@ -983,8 +984,7 @@ function BonkBurnAnimation({
           fontFamily: font,
           fontSize: isMobile ? '8px' : '10px',
           letterSpacing: '3px',
-          color: '#e879f9',
-          textShadow: '0 0 12px rgba(232,121,249,0.9)',
+          color: '#f97316',
           textAlign: 'center',
         }}
       >
@@ -1008,11 +1008,7 @@ function BonkBurnAnimation({
             fontFamily: font,
             fontSize: isMobile ? '16px' : '22px',
             letterSpacing: '2px',
-            color: phase === 'burning' ? '#ff6b00' : '#db2777',
-            textShadow:
-              phase === 'burning'
-                ? undefined
-                : '0 0 16px rgba(219,39,119,0.8)',
+            color: phase === 'burning' ? '#ff6b00' : '#f97316',
             animation: phase === 'burning' ? 'bonkCountGlow 0.3s ease-in-out infinite' : undefined,
             transition: 'color 0.3s ease',
             minWidth: isMobile ? '130px' : '190px',
@@ -1341,13 +1337,13 @@ function CostRow({
 }) {
   return (
     <div style={s.costRow}>
-      <span style={{ ...s.costLabel, ...(bold ? { color: '#e879f9' } : {}) }}>
+      <span style={{ ...s.costLabel, ...(bold ? { color: '#f97316' } : {}) }}>
         {label}
       </span>
       <span
         style={{
           ...s.costValue,
-          ...(bold ? { color: '#e879f9', fontSize: '10px' } : {}),
+          ...(bold ? { color: '#f97316', fontSize: '13px', fontWeight: '700' } : {}),
         }}
       >
         {value}
@@ -1370,15 +1366,14 @@ function ProgressBar({ step, total, isMobile }: { step: number; total: number; i
               height: isMobile ? '22px' : '28px',
               fontSize: isMobile ? '6px' : '7px',
               background:
-                i < step ? '#db2777' : i === step - 1 ? '#db2777' : '#1e0035',
+                i < step ? '#f97316' : i === step - 1 ? '#f97316' : '#1a1a1a',
               borderColor:
                 i === step - 1
-                  ? '#db2777'
+                  ? '#f97316'
                   : i < step
-                  ? '#db2777'
-                  : '#3b0764',
-              boxShadow:
-                i === step - 1 ? '0 0 10px rgba(219, 39, 119, 0.8)' : 'none',
+                  ? '#f97316'
+                  : '#333333',
+              boxShadow: 'none',
             }}
           >
             {i < step ? '✓' : i + 1}
@@ -1388,7 +1383,7 @@ function ProgressBar({ step, total, isMobile }: { step: number; total: number; i
               style={{
                 ...s.progressLine,
                 width: isMobile ? '20px' : '40px',
-                background: i < step - 1 ? '#db2777' : '#1e0035',
+                background: i < step - 1 ? '#f97316' : '#1a1a1a',
               }}
             />
           )}
@@ -1558,7 +1553,7 @@ export default function LaunchPage() {
       {/* Header */}
       <header style={s.header}>
         <Link href="/" style={s.logo}>
-          BASED<span style={s.logoAccent}>FARMS</span>
+          <span style={{ fontFamily: pressStart }}>BASED<span style={s.logoAccent}>FARMS</span></span>
         </Link>
         <span style={s.headerLabel}>LAUNCH TOKEN</span>
       </header>
@@ -1620,14 +1615,14 @@ export default function LaunchPage() {
 const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#0d0015',
+    background: '#0a0a0a',
     padding: '0 0 60px',
     boxSizing: 'border-box',
   },
   devnetBanner: {
     width: '100%',
-    background: 'rgba(245, 158, 11, 0.15)',
-    border: '1px solid rgba(245, 158, 11, 0.4)',
+    background: 'rgba(245, 158, 11, 0.1)',
+    border: '1px solid rgba(245, 158, 11, 0.3)',
     borderLeft: 'none',
     borderRight: 'none',
     color: '#f59e0b',
@@ -1643,28 +1638,26 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '14px 16px',
-    borderBottom: '1px solid #1e0035',
-    background: 'rgba(13, 0, 21, 0.95)',
+    borderBottom: '1px solid #1a1a1a',
+    background: 'rgba(10, 10, 10, 0.95)',
     backdropFilter: 'blur(10px)',
     position: 'sticky',
     top: 0,
     zIndex: 100,
   },
   logo: {
-    fontFamily: font,
+    fontFamily: pressStart,
     fontSize: '11px',
     letterSpacing: '2px',
-    color: '#c084fc',
+    color: '#ffffff',
     textDecoration: 'none',
-    textShadow: '0 0 10px rgba(192, 132, 252, 0.4)',
   },
-  logoAccent: { color: '#db2777' },
+  logoAccent: { color: '#f97316' },
   headerLabel: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#e879f9',
+    color: '#888888',
     letterSpacing: '2px',
-    textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
   },
   progressBar: {
     display: 'flex',
@@ -1725,21 +1718,18 @@ const s: Record<string, React.CSSProperties> = {
   },
   // Cards
   card: {
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid #3b0764',
-    boxShadow:
-      '0 0 30px rgba(124, 58, 237, 0.12), inset 0 0 20px rgba(88, 28, 135, 0.04)',
-    animation: 'border-glow 4s ease-in-out infinite',
+    background: '#111111',
+    border: '1px solid #222222',
+    borderRadius: '12px',
   },
   stepTitle: {
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '2px',
-    color: '#e879f9',
-    textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
+    color: '#888888',
     marginBottom: '20px',
     paddingBottom: '12px',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
+    borderBottom: '1px solid #1a1a1a',
   },
   field: {
     display: 'flex',
@@ -1751,19 +1741,19 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1.5px',
-    color: '#e2b4ff',
+    color: '#aaaaaa',
   },
-  required: { color: '#db2777' },
+  required: { color: '#f97316' },
   hint: {
     fontFamily: font,
     fontSize: '6px',
     letterSpacing: '1px',
-    color: 'rgba(255,255,255,0.6)',
+    color: '#555555',
     lineHeight: 1.6,
   },
   input: {
-    background: '#0d0020',
-    border: '1px solid #3b0764',
+    background: '#0f0f0f',
+    border: '1px solid #333333',
     borderRadius: '8px',
     padding: '11px 12px',
     color: '#ffffff',
@@ -1774,15 +1764,15 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     boxSizing: 'border-box',
     transition: 'border-color 0.15s',
-    minHeight: '44px', // touch target
+    minHeight: '44px',
   },
   inputDisabled: {
     opacity: 0.5,
     cursor: 'not-allowed',
   },
   textarea: {
-    background: '#0d0020',
-    border: '1px solid #3b0764',
+    background: '#0f0f0f',
+    border: '1px solid #333333',
     borderRadius: '8px',
     padding: '11px 12px',
     color: '#ffffff',
@@ -1805,7 +1795,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     minHeight: '110px',
     transition: 'border-color 0.2s',
-    background: 'rgba(13, 0, 32, 0.5)',
+    background: '#0a0a0a',
   },
   imageUploadInner: {
     display: 'flex',
@@ -1813,17 +1803,17 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
   },
-  imageUploadIcon: { fontSize: '28px', color: '#3b0764' },
+  imageUploadIcon: { fontSize: '28px', color: '#888888' },
   imageUploadText: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#6d28d9',
+    color: '#555555',
     letterSpacing: '2px',
   },
   imageUploadHint: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#3b0764',
+    color: '#555555',
     letterSpacing: '1px',
   },
   imagePreview: {
@@ -1838,7 +1828,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: font,
     fontSize: '6px',
-    color: '#4c1d95',
+    color: '#555555',
     letterSpacing: '1px',
     textAlign: 'left',
     padding: '4px 0',
@@ -1849,11 +1839,11 @@ const s: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
   },
   radioBtn: {
-    background: 'rgba(88, 28, 135, 0.1)',
-    border: '1px solid #3b0764',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '6px',
     padding: '10px 14px',
-    color: '#6d28d9',
+    color: '#888888',
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1px',
@@ -1862,10 +1852,9 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: '40px',
   },
   radioBtnActive: {
-    background: 'rgba(219, 39, 119, 0.2)',
-    borderColor: '#db2777',
-    color: '#db2777',
-    boxShadow: '0 0 8px rgba(219, 39, 119, 0.3)',
+    background: 'rgba(249, 115, 22, 0.1)',
+    borderColor: '#f97316',
+    color: '#f97316',
   },
   sliderRow: {
     display: 'flex',
@@ -1874,17 +1863,16 @@ const s: Record<string, React.CSSProperties> = {
   },
   slider: {
     flex: 1,
-    accentColor: '#db2777',
+    accentColor: '#f97316',
     cursor: 'pointer',
-    minHeight: '24px', // touch target
+    minHeight: '24px',
   },
   sliderValue: {
     fontFamily: font,
     fontSize: '8px',
-    color: '#db2777',
+    color: '#f97316',
     minWidth: '52px',
     textAlign: 'right',
-    textShadow: '0 0 8px rgba(219, 39, 119, 0.5)',
     flexShrink: 0,
   },
   curveStats: {
@@ -1893,8 +1881,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   curveStat: {
     flex: 1,
-    background: 'rgba(88, 28, 135, 0.1)',
-    border: '1px solid #1e0035',
+    background: '#1a1a1a',
+    border: '1px solid #222222',
     borderRadius: '8px',
     padding: '10px 12px',
     display: 'flex',
@@ -1904,37 +1892,37 @@ const s: Record<string, React.CSSProperties> = {
   curveStatLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#4c1d95',
+    color: '#555555',
     letterSpacing: '1px',
   },
   curveStatValue: {
     fontFamily: font,
     fontSize: '8px',
-    color: '#c084fc',
+    color: '#e5e5e5',
   },
   curveTypeBox: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    background: 'rgba(88, 28, 135, 0.08)',
-    border: '1px solid #1e0035',
+    background: '#1a1a1a',
+    border: '1px solid #222222',
     borderRadius: '8px',
     padding: '10px 14px',
   },
   curveTypeLabel: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#4c1d95',
+    color: '#555555',
     letterSpacing: '1px',
   },
   curveTypeBadge: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#7c3aed',
+    color: '#888888',
     letterSpacing: '1px',
   },
   toggleSection: {
-    borderBottom: '1px solid #1e0035',
+    borderBottom: '1px solid #1a1a1a',
     paddingBottom: '14px',
     marginBottom: '14px',
   },
@@ -1944,7 +1932,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: '12px',
     cursor: 'pointer',
     userSelect: 'none',
-    minHeight: '44px', // touch target
+    minHeight: '44px',
   },
   toggleTrack: {
     width: '44px',
@@ -1967,14 +1955,14 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1px',
-    color: '#c084fc',
+    color: '#aaaaaa',
     lineHeight: 1.5,
   },
   toggleLabel2: {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1.5px',
-    color: '#7c3aed',
+    color: '#555555',
     marginBottom: '10px',
   },
   toggleContent: {},
@@ -1986,8 +1974,8 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    background: 'rgba(219, 39, 119, 0.08)',
-    border: '1px solid rgba(219, 39, 119, 0.3)',
+    background: 'rgba(249, 115, 22, 0.08)',
+    border: '1px solid rgba(249, 115, 22, 0.25)',
     borderRadius: '8px',
     padding: '10px 14px',
     marginBottom: '8px',
@@ -1996,14 +1984,13 @@ const s: Record<string, React.CSSProperties> = {
   estimateLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#db2777',
+    color: '#f97316',
     letterSpacing: '1px',
   },
   estimateValue: {
     fontFamily: font,
     fontSize: '9px',
-    color: '#db2777',
-    textShadow: '0 0 8px rgba(219, 39, 119, 0.5)',
+    color: '#f97316',
     flexShrink: 0,
   },
   // Review
@@ -2012,7 +1999,7 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 0,
     marginBottom: '16px',
-    border: '1px solid #1e0035',
+    border: '1px solid #222222',
     borderRadius: '10px',
     overflow: 'hidden',
   },
@@ -2021,26 +2008,26 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '9px 12px',
-    borderBottom: '1px solid #0d0020',
+    borderBottom: '1px solid #1a1a1a',
     gap: '10px',
   },
   reviewLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#e2b4ff',
+    color: '#888888',
     letterSpacing: '1px',
     flexShrink: 0,
   },
   reviewValue: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#c084fc',
+    color: '#e5e5e5',
     letterSpacing: '1px',
     textAlign: 'right',
   },
   costCard: {
-    background: 'rgba(88, 28, 135, 0.08)',
-    border: '1px solid #3b0764',
+    background: '#1a1a1a',
+    border: '1px solid #222222',
     borderRadius: '10px',
     padding: '14px',
     marginBottom: '16px',
@@ -2049,7 +2036,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '2px',
-    color: '#e2b4ff',
+    color: '#888888',
     marginBottom: '10px',
   },
   costRows: { display: 'flex', flexDirection: 'column', gap: '8px' },
@@ -2062,15 +2049,15 @@ const s: Record<string, React.CSSProperties> = {
   costLabel: {
     fontFamily: font,
     fontSize: '6px',
-    color: 'rgba(255,255,255,0.6)',
+    color: '#555555',
     letterSpacing: '1px',
   },
-  costValue: { fontFamily: font, fontSize: '7px', color: '#c084fc' },
-  costDivider: { height: '1px', background: '#1e0035', margin: '2px 0' },
+  costValue: { fontFamily: font, fontSize: '7px', color: '#e5e5e5' },
+  costDivider: { height: '1px', background: '#222222', margin: '2px 0' },
   shareNote: {
     fontFamily: font,
     fontSize: '6px',
-    color: '#3b0764',
+    color: '#444444',
     letterSpacing: '1px',
     marginTop: '8px',
     textAlign: 'center',
@@ -2080,21 +2067,21 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '10px',
     padding: '12px',
-    background: 'rgba(124, 58, 237, 0.1)',
-    border: '1px solid #7c3aed',
+    background: 'rgba(249, 115, 22, 0.08)',
+    border: '1px solid rgba(249, 115, 22, 0.3)',
     borderRadius: '8px',
     marginBottom: '14px',
   },
   spinner: {
     fontFamily: font,
     fontSize: '14px',
-    color: '#7c3aed',
+    color: '#f97316',
     animation: 'pulse 1s ease-in-out infinite',
   },
   statusText: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#a855f7',
+    color: '#f97316',
     letterSpacing: '1.5px',
   },
   errorBox: {
@@ -2136,7 +2123,6 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: '9px',
     color: '#22c55e',
     letterSpacing: '2px',
-    textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
   },
   txList: { display: 'flex', flexDirection: 'column', gap: '8px' },
   txLink: {
@@ -2149,26 +2135,25 @@ const s: Record<string, React.CSSProperties> = {
   launchBtn: {
     width: '100%',
     padding: '16px',
-    background: 'linear-gradient(135deg, #db2777 0%, #7c3aed 100%)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '10px',
-    color: '#ffffff',
+    color: '#000000',
     fontFamily: font,
     fontSize: '10px',
     letterSpacing: '2px',
     cursor: 'pointer',
-    boxShadow: '0 0 20px rgba(219, 39, 119, 0.4)',
     transition: 'opacity 0.2s',
   },
-  launchBtnDisabled: { opacity: 0.55, cursor: 'not-allowed', boxShadow: 'none' },
+  launchBtnDisabled: { opacity: 0.4, cursor: 'not-allowed' },
   doneBtn: {
     display: 'block',
     width: '100%',
     padding: '14px',
-    background: 'rgba(88, 28, 135, 0.2)',
-    border: '1px solid #3b0764',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '10px',
-    color: '#c084fc',
+    color: '#888888',
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '2px',
@@ -2185,9 +2170,9 @@ const s: Record<string, React.CSSProperties> = {
     flex: 1,
     padding: '12px',
     background: 'transparent',
-    border: '1px solid #3b0764',
+    border: '1px solid #333333',
     borderRadius: '8px',
-    color: '#6d28d9',
+    color: '#888888',
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '2px',
@@ -2196,31 +2181,28 @@ const s: Record<string, React.CSSProperties> = {
   nextBtn: {
     flex: 2,
     padding: '12px',
-    background: 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '8px',
-    color: '#ffffff',
+    color: '#000000',
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '2px',
     cursor: 'pointer',
-    boxShadow: '0 0 14px rgba(124, 58, 237, 0.4)',
   },
-  nextBtnDisabled: { opacity: 0.4, cursor: 'not-allowed', boxShadow: 'none' },
+  nextBtnDisabled: { opacity: 0.4, cursor: 'not-allowed' },
   // Desktop score panel
   scorePanel: {
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid #3b0764',
+    background: '#111111',
+    border: '1px solid #222222',
     borderRadius: '14px',
     padding: '20px',
-    boxShadow: '0 0 20px rgba(124, 58, 237, 0.1)',
   },
   scorePanelTitle: {
     fontFamily: font,
     fontSize: '8px',
     letterSpacing: '2px',
-    color: '#e879f9',
-    textShadow: '0 0 8px rgba(232, 121, 249, 0.4)',
+    color: '#888888',
     textAlign: 'center',
   },
   scoreCircle: {
@@ -2231,16 +2213,15 @@ const s: Record<string, React.CSSProperties> = {
     margin: '12px 0 10px',
   },
   scoreNumber: {
-    fontFamily: font,
+    fontFamily: pressStart,
     fontSize: '36px',
     lineHeight: 1,
-    textShadow: '0 0 20px currentColor',
     transition: 'color 0.3s',
   },
-  scoreMax: { fontFamily: font, fontSize: '10px', color: '#3b0764' },
+  scoreMax: { fontFamily: font, fontSize: '10px', color: '#333333' },
   scoreBarTrack: {
     height: '4px',
-    background: '#1e0035',
+    background: '#1a1a1a',
     borderRadius: '2px',
     overflow: 'hidden',
     margin: '8px 0',
@@ -2254,7 +2235,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1.5px',
-    color: '#6d28d9',
+    color: '#555555',
     textAlign: 'center',
     marginBottom: '14px',
   },
@@ -2277,11 +2258,10 @@ const s: Record<string, React.CSSProperties> = {
   },
   // Mobile score panel
   scorePanelMobile: {
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid #3b0764',
+    background: '#111111',
+    border: '1px solid #222222',
     borderRadius: '10px',
     padding: '12px 14px',
-    boxShadow: '0 0 16px rgba(124, 58, 237, 0.1)',
   },
   scoreMobileHeader: {
     display: 'flex',
@@ -2298,10 +2278,9 @@ const s: Record<string, React.CSSProperties> = {
     gap: '10px',
   },
   scoreMobileNumber: {
-    fontFamily: font,
+    fontFamily: pressStart,
     fontSize: '18px',
     lineHeight: 1,
-    textShadow: '0 0 10px currentColor',
     transition: 'color 0.3s',
   },
   scoreMobileTier: {
@@ -2313,7 +2292,7 @@ const s: Record<string, React.CSSProperties> = {
   scoreExpandIcon: {
     fontFamily: font,
     fontSize: '8px',
-    color: '#3b0764',
+    color: '#333333',
     marginLeft: '2px',
   },
   scoreMobileBreakdown: {
@@ -2322,13 +2301,13 @@ const s: Record<string, React.CSSProperties> = {
     gap: '7px',
     marginTop: '10px',
     paddingTop: '10px',
-    borderTop: '1px solid #1e0035',
+    borderTop: '1px solid #1a1a1a',
   },
   scoreCategory: {
     fontFamily: font,
     fontSize: '5px',
     letterSpacing: '2px',
-    color: '#a78bfa',
+    color: '#555555',
     marginTop: '10px',
     marginBottom: '5px',
     textTransform: 'uppercase' as const,
@@ -2336,23 +2315,22 @@ const s: Record<string, React.CSSProperties> = {
   basedBonusRow: {
     marginTop: '4px',
     padding: '5px 7px',
-    background: 'rgba(245, 158, 11, 0.07)',
+    background: 'rgba(249, 115, 22, 0.06)',
     borderRadius: '5px',
-    border: '1px solid rgba(245, 158, 11, 0.2)',
+    border: '1px solid rgba(249, 115, 22, 0.15)',
   },
   basedBonusBadge: {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '1px',
-    color: '#f59e0b',
-    textShadow: '0 0 10px rgba(245, 158, 11, 0.6)',
+    color: '#f97316',
     textAlign: 'center' as const,
     margin: '6px 0 4px',
     animation: 'pulse 1.5s ease-in-out infinite',
   },
   scoreDivider: {
     height: '1px',
-    background: 'linear-gradient(90deg, transparent, #3b0764, transparent)',
+    background: '#1a1a1a',
     margin: '14px 0',
   },
   // Based Points section
@@ -2365,8 +2343,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '7px',
     letterSpacing: '2px',
-    color: '#f59e0b',
-    textShadow: '0 0 8px rgba(245, 158, 11, 0.4)',
+    color: '#f97316',
     marginBottom: '4px',
   },
   basedPointsRows: {
@@ -2382,20 +2359,20 @@ const s: Record<string, React.CSSProperties> = {
   basedPointsIcon: {
     fontFamily: font,
     fontSize: '8px',
-    color: '#78350f',
+    color: '#555555',
     flexShrink: 0,
   },
   basedPointsEvent: {
     fontFamily: font,
     fontSize: '6px',
     letterSpacing: '0.5px',
-    color: '#92400e',
+    color: '#888888',
     flex: 1,
   },
   basedPointsValue: {
     fontFamily: font,
     fontSize: '7px',
-    color: '#f59e0b',
+    color: '#f97316',
     letterSpacing: '1px',
     flexShrink: 0,
   },
@@ -2403,7 +2380,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '5px',
     letterSpacing: '0.3px',
-    color: '#78350f',
+    color: '#444444',
     lineHeight: 1.6,
     fontStyle: 'italic' as const,
   },
@@ -2412,7 +2389,7 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '6px',
     letterSpacing: '1.5px',
-    color: '#1e0035',
+    color: '#333333',
     textAlign: 'center',
     marginTop: '40px',
     padding: '0 16px',

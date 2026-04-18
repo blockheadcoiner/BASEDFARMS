@@ -3,22 +3,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
-const font = 'var(--font-press-start), "Courier New", monospace';
+const pressStart = 'var(--font-press-start), "Courier New", monospace';
+const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
 const PLATFORM_ID = '32SyS4SyyNK0AERNMk9vLjSdrJ9mUXrNkD5wUMASqHw4';
 const LIST_URL = 'https://launch-mint-v1.raydium.io/get/list';
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
 interface LaunchToken {
-  mint: string;              // token mint address
+  mint: string;
   poolId?: string;
   name: string;
   symbol: string;
-  imgUrl?: string;           // direct image URL (no metadata fetch needed)
+  imgUrl?: string;
   metadataUrl?: string;
-  createAt?: number;         // ms timestamp
-  marketCap?: number;        // SOL float
-  finishingRate?: number;    // 0-100 progress toward graduation
+  createAt?: number;
+  marketCap?: number;
+  finishingRate?: number;
   migrateType?: string;
   platformInfo?: { pubKey: string; name?: string };
   decimals?: number;
@@ -26,7 +27,6 @@ interface LaunchToken {
 }
 
 async function fetchPlatformTokens(): Promise<LaunchToken[]> {
-  // Fetch recent tokens (all platforms) then filter client-side by our platform ID
   const res = await fetch(
     `${LIST_URL}?sort=new&size=50&mintType=default&includeNsfw=false`,
     { cache: 'no-store' },
@@ -38,14 +38,12 @@ async function fetchPlatformTokens(): Promise<LaunchToken[]> {
   };
   if (!json.success) throw new Error('Raydium API returned success: false');
   const rows = json.data?.rows ?? [];
-  // Filter to BASEDFARMS platform only
   return rows.filter((t) => t.platformInfo?.pubKey === PLATFORM_ID);
 }
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 function timeAgo(ts: number): string {
-  // createAt is already in ms
   const diff = Date.now() - ts;
   if (diff < 60_000)       return 'just now';
   if (diff < 3_600_000)    return `${Math.floor(diff / 60_000)}m ago`;
@@ -54,7 +52,6 @@ function timeAgo(ts: number): string {
 }
 
 function curveProgress(t: LaunchToken): number {
-  // finishingRate is already 0-100
   if (typeof t.finishingRate === 'number') return Math.min(100, Math.round(t.finishingRate));
   return 0;
 }
@@ -68,9 +65,8 @@ function fmtMcap(t: LaunchToken): string {
 }
 
 function statusInfo(t: LaunchToken) {
-  // finishingRate 100 = graduated, migrateType is a clue too
   if ((t.finishingRate ?? 0) >= 100) return { text: '✓ GRAD',    color: '#22c55e' };
-  return                                     { text: '● LIVE',    color: '#db2777' };
+  return                                     { text: '● LIVE',    color: '#f97316' };
 }
 
 function basedTier(name: string, symbol: string) {
@@ -81,7 +77,6 @@ function basedTier(name: string, symbol: string) {
   return null;
 }
 
-/** Deterministic hue from symbol string */
 function symbolHue(symbol: string) {
   return symbol.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
 }
@@ -108,12 +103,12 @@ function TokenImage({ imgUrl, symbol, size }: { imgUrl?: string; symbol: string;
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: `hsl(${hue},55%,16%)`,
-      border: `1px solid hsl(${hue},55%,30%)`,
+      background: `hsl(${hue},30%,12%)`,
+      border: `1px solid hsl(${hue},30%,22%)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: font,
+      fontFamily: pressStart,
       fontSize: `${Math.floor(size * 0.38)}px`,
-      color: `hsl(${hue},70%,65%)`,
+      color: `hsl(${hue},50%,60%)`,
     }}>
       {letter}
     </div>
@@ -126,7 +121,7 @@ function TokenCard({ token }: { token: LaunchToken }) {
   const progress = curveProgress(token);
   const sl = statusInfo(token);
   const tier = basedTier(token.name, token.symbol);
-  const barColor = progress >= 90 ? '#22c55e' : 'linear-gradient(90deg, #7c3aed, #db2777)';
+  const barColor = progress >= 90 ? '#22c55e' : '#f97316';
 
   return (
     <div style={s.card}>
@@ -135,20 +130,17 @@ function TokenCard({ token }: { token: LaunchToken }) {
         <TokenImage imgUrl={token.imgUrl} symbol={token.symbol} size={40} />
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {/* Symbol + tier badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
             <span style={s.symbol}>${token.symbol}</span>
             {tier && (
-              <span style={{ ...s.tierBadge, color: tier.color, borderColor: tier.color, background: `${tier.color}1a` }}>
+              <span style={{ ...s.tierBadge, color: tier.color, borderColor: tier.color, background: `${tier.color}18` }}>
                 ◈ {tier.label}
               </span>
             )}
           </div>
-          {/* Name */}
           <span style={s.tokenName}>{token.name}</span>
         </div>
 
-        {/* Status pill */}
         <span style={{ ...s.statusPill, color: sl.color }}>{sl.text}</span>
       </div>
 
@@ -190,14 +182,14 @@ function SkeletonCard() {
   return (
     <div style={{ ...s.card, gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1e0035', flexShrink: 0, animation: 'pulse 1.5s ease-in-out infinite' }} />
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1a1a1a', flexShrink: 0, animation: 'pulse 1.5s ease-in-out infinite' }} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <div style={{ height: '8px', background: '#1e0035', borderRadius: '4px', width: '60%', animation: 'pulse 1.5s ease-in-out infinite' }} />
-          <div style={{ height: '6px', background: '#1e0035', borderRadius: '4px', width: '80%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+          <div style={{ height: '8px', background: '#1a1a1a', borderRadius: '4px', width: '60%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+          <div style={{ height: '6px', background: '#1a1a1a', borderRadius: '4px', width: '80%', animation: 'pulse 1.5s ease-in-out infinite' }} />
         </div>
       </div>
-      <div style={{ height: '4px', background: '#1e0035', borderRadius: '2px', animation: 'pulse 1.5s ease-in-out infinite' }} />
-      <div style={{ height: '36px', background: '#1e0035', borderRadius: '7px', animation: 'pulse 1.5s ease-in-out infinite' }} />
+      <div style={{ height: '4px', background: '#1a1a1a', borderRadius: '2px', animation: 'pulse 1.5s ease-in-out infinite' }} />
+      <div style={{ height: '36px', background: '#1a1a1a', borderRadius: '7px', animation: 'pulse 1.5s ease-in-out infinite' }} />
     </div>
   );
 }
@@ -320,8 +312,8 @@ export default function TokensPage() {
 const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#0d0015',
-    color: '#c084fc',
+    background: '#0a0a0a',
+    color: '#e5e5e5',
     fontFamily: font,
     padding: '0 0 60px',
     boxSizing: 'border-box',
@@ -333,22 +325,21 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '14px 16px',
-    borderBottom: '1px solid #1e0035',
-    background: 'rgba(13, 0, 21, 0.95)',
+    borderBottom: '1px solid #1a1a1a',
+    background: 'rgba(10, 10, 10, 0.95)',
     backdropFilter: 'blur(10px)',
     position: 'sticky',
     top: 0,
     zIndex: 100,
   },
   logo: {
-    fontFamily: font,
+    fontFamily: pressStart,
     fontSize: '11px',
     letterSpacing: '2px',
-    color: '#c084fc',
+    color: '#ffffff',
     textDecoration: 'none',
-    textShadow: '0 0 10px rgba(192, 132, 252, 0.4)',
   },
-  logoAccent: { color: '#db2777' },
+  logoAccent: { color: '#f97316' },
   headerNav: {
     display: 'flex',
     alignItems: 'center',
@@ -356,22 +347,22 @@ const s: Record<string, React.CSSProperties> = {
   },
   navActive: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '2px',
-    color: '#e879f9',
+    fontSize: '12px',
+    letterSpacing: '0.5px',
+    color: '#f97316',
     textDecoration: 'none',
-    textShadow: '0 0 8px rgba(232,121,249,0.5)',
+    fontWeight: '600',
   },
   launchBtn: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    fontWeight: '600',
     padding: '8px 12px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     borderRadius: '6px',
-    color: '#fff',
+    color: '#000000',
     textDecoration: 'none',
-    boxShadow: '0 0 12px rgba(168, 85, 247, 0.3)',
   },
 
   // Title row
@@ -388,25 +379,24 @@ const s: Record<string, React.CSSProperties> = {
   },
   pageTitle: {
     fontFamily: font,
-    fontSize: '14px',
-    color: '#e879f9',
-    textShadow: '0 0 16px rgba(232,121,249,0.6)',
-    letterSpacing: '3px',
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: '1px',
     margin: 0,
-    fontWeight: 400,
   },
   pageSub: {
     fontFamily: font,
-    fontSize: '6px',
-    color: '#6d28d9',
-    letterSpacing: '1.5px',
+    fontSize: '12px',
+    color: '#666666',
+    letterSpacing: '0.3px',
     margin: '8px 0 0',
   },
   refreshedAt: {
     fontFamily: font,
-    fontSize: '5px',
-    color: '#3b0764',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    color: '#444444',
+    letterSpacing: '0.3px',
     margin: '4px 0 0',
   },
   titleActions: {
@@ -417,24 +407,24 @@ const s: Record<string, React.CSSProperties> = {
   },
   refreshBtn: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    letterSpacing: '0.3px',
     padding: '9px 12px',
-    background: 'rgba(88, 28, 135, 0.2)',
-    border: '1px solid #3b0764',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '6px',
-    color: '#c084fc',
+    color: '#888888',
   },
   launchCta: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.3px',
     padding: '9px 14px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     borderRadius: '6px',
-    color: '#fff',
+    color: '#000000',
     textDecoration: 'none',
-    boxShadow: '0 0 14px rgba(219, 39, 119, 0.35)',
     whiteSpace: 'nowrap',
   },
 
@@ -446,7 +436,7 @@ const s: Record<string, React.CSSProperties> = {
     boxSizing: 'border-box',
   },
 
-  // Grid: auto-fill, 2 cols on mobile (min 160px), 3-4 on wider screens
+  // Grid
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
@@ -455,47 +445,47 @@ const s: Record<string, React.CSSProperties> = {
 
   // Token card
   card: {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid #3b0764',
+    background: '#111111',
+    border: '1px solid #1a1a1a',
     borderRadius: '12px',
     padding: '14px',
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
     boxSizing: 'border-box',
-    boxShadow: '0 0 20px rgba(124, 58, 237, 0.1), inset 0 0 20px rgba(88, 28, 135, 0.03)',
   },
   symbol: {
-    fontFamily: font,
+    fontFamily: pressStart,
     fontSize: '8px',
-    color: '#e879f9',
+    color: '#f97316',
     letterSpacing: '1px',
-    textShadow: '0 0 8px rgba(232,121,249,0.4)',
   },
   tierBadge: {
     fontFamily: font,
-    fontSize: '5px',
-    letterSpacing: '0.5px',
+    fontSize: '9px',
+    letterSpacing: '0.3px',
     padding: '2px 5px',
     border: '1px solid',
     borderRadius: '3px',
     whiteSpace: 'nowrap',
+    fontWeight: '600',
   },
   tokenName: {
     fontFamily: font,
-    fontSize: '6px',
-    color: '#c084fc',
-    letterSpacing: '0.8px',
+    fontSize: '11px',
+    color: '#888888',
+    letterSpacing: '0.3px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   statusPill: {
     fontFamily: font,
-    fontSize: '5px',
-    letterSpacing: '0.5px',
+    fontSize: '10px',
+    letterSpacing: '0.3px',
     flexShrink: 0,
     paddingTop: '2px',
+    fontWeight: '600',
   },
 
   // Progress
@@ -511,18 +501,19 @@ const s: Record<string, React.CSSProperties> = {
   },
   progressLabel: {
     fontFamily: font,
-    fontSize: '5px',
-    color: '#4c1d95',
-    letterSpacing: '1px',
+    fontSize: '10px',
+    color: '#555555',
+    letterSpacing: '0.3px',
   },
   progressPct: {
     fontFamily: font,
-    fontSize: '6px',
-    color: '#a855f7',
+    fontSize: '11px',
+    color: '#e5e5e5',
+    fontWeight: '600',
   },
   progressTrack: {
     height: '4px',
-    background: '#1e0035',
+    background: '#1a1a1a',
     borderRadius: '2px',
     overflow: 'hidden',
   },
@@ -533,9 +524,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   progressSub: {
     fontFamily: font,
-    fontSize: '5px',
-    color: '#3b0764',
-    letterSpacing: '0.5px',
+    fontSize: '9px',
+    color: '#444444',
+    letterSpacing: '0.3px',
   },
 
   // Stats
@@ -550,14 +541,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   statLabel: {
     fontFamily: font,
-    fontSize: '5px',
-    color: '#3b0764',
-    letterSpacing: '1px',
+    fontSize: '9px',
+    color: '#555555',
+    letterSpacing: '0.3px',
   },
   statVal: {
     fontFamily: font,
-    fontSize: '6px',
-    color: '#c084fc',
+    fontSize: '11px',
+    color: '#e5e5e5',
+    fontWeight: '500',
   },
 
   // Trade button
@@ -565,16 +557,16 @@ const s: Record<string, React.CSSProperties> = {
     display: 'block',
     width: '100%',
     padding: '9px',
-    background: 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)',
+    background: '#f97316',
     borderRadius: '7px',
-    color: '#ffffff',
+    color: '#000000',
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '2px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     textAlign: 'center',
     textDecoration: 'none',
     boxSizing: 'border-box',
-    boxShadow: '0 0 12px rgba(219, 39, 119, 0.25)',
   },
 
   // Error
@@ -587,9 +579,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   errorText: {
     fontFamily: font,
-    fontSize: '7px',
+    fontSize: '12px',
     color: '#ef4444',
-    letterSpacing: '1px',
+    letterSpacing: '0.3px',
   },
 
   // Empty state
@@ -603,36 +595,37 @@ const s: Record<string, React.CSSProperties> = {
   },
   emptyTitle: {
     fontFamily: font,
-    fontSize: '9px',
-    color: '#6d28d9',
-    letterSpacing: '2px',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#888888',
+    letterSpacing: '0.5px',
     margin: '0 0 8px',
   },
   emptySub: {
     fontFamily: font,
-    fontSize: '7px',
-    color: '#3b0764',
-    letterSpacing: '1.5px',
+    fontSize: '12px',
+    color: '#555555',
+    letterSpacing: '0.5px',
     margin: 0,
   },
   emptyLaunchBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '2px',
+    fontSize: '13px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     padding: '14px 24px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     borderRadius: '8px',
-    color: '#fff',
+    color: '#000000',
     textDecoration: 'none',
-    boxShadow: '0 0 20px rgba(219, 39, 119, 0.4)',
   },
 
   // Footer
   footer: {
     fontFamily: font,
-    fontSize: '6px',
-    letterSpacing: '1.5px',
-    color: '#1e0035',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    color: '#333333',
     textAlign: 'center',
     marginTop: '40px',
     padding: '0 16px',

@@ -3,16 +3,16 @@
 import Link from 'next/link';
 import ConnectWalletButton from '@/components/ConnectWalletButton';
 
-const font = 'var(--font-press-start), "Courier New", monospace';
+const pressStart = 'var(--font-press-start), "Courier New", monospace';
+const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
 
 const BGM_MINT = '3nZg1VZjT8qbeVPPKFmQmj6zbSw8D42RnxSeae3Qbonk';
 
 type TickerEntry =
   | { kind: 'sep' }
-  | { kind: 'text';  label: string; pink?: boolean }
-  | { kind: 'logo';  symbol: string; symbolColor: string; label: string; pink?: boolean };
+  | { kind: 'text';  label: string; accent?: boolean }
+  | { kind: 'logo';  symbol: string; symbolColor: string; label: string; accent?: boolean };
 
-// One full pass of the ticker — duplicated below for seamless loop
 const TICKER: TickerEntry[] = [
   { kind: 'text', label: '◈ BGM' },
   { kind: 'sep' },
@@ -26,13 +26,13 @@ const TICKER: TickerEntry[] = [
   { kind: 'sep' },
   { kind: 'text', label: '0.3% SWAP FEE' },
   { kind: 'sep' },
-  { kind: 'text', label: 'BASED FARMS',          pink: true },
+  { kind: 'text', label: 'BASED FARMS',          accent: true },
   { kind: 'sep' },
-  { kind: 'text', label: 'LAUNCH YOUR TOKEN',    pink: true },
+  { kind: 'text', label: 'LAUNCH YOUR TOKEN',    accent: true },
   { kind: 'sep' },
-  { kind: 'text', label: 'LAUNCH YOUR FARM',     pink: true },
+  { kind: 'text', label: 'LAUNCH YOUR FARM',     accent: true },
   { kind: 'sep' },
-  { kind: 'text', label: 'BUILD YOUR COMMUNITY', pink: true },
+  { kind: 'text', label: 'BUILD YOUR COMMUNITY', accent: true },
   { kind: 'sep' },
 ];
 
@@ -40,7 +40,7 @@ function renderEntry(e: TickerEntry, key: string) {
   if (e.kind === 'sep') {
     return <span key={key} style={tickerSepStyle}>·</span>;
   }
-  const color = e.pink ? '#db2777' : '#ffffff';
+  const color = e.accent ? '#f97316' : '#888888';
   if (e.kind === 'logo') {
     return (
       <span key={key} style={{ ...tickerItemStyle, color }}>
@@ -52,18 +52,17 @@ function renderEntry(e: TickerEntry, key: string) {
   return <span key={key} style={{ ...tickerItemStyle, color }}>{e.label}</span>;
 }
 
-// Defined outside component to avoid re-creation on every render
 const tickerItemStyle: React.CSSProperties = {
-  fontFamily: font,
+  fontFamily: pressStart,
   fontSize: '8px',
   letterSpacing: '1.5px',
   whiteSpace: 'nowrap',
   flexShrink: 0,
 };
 const tickerSepStyle: React.CSSProperties = {
-  color: '#3b0764',
+  color: '#333333',
   fontSize: '8px',
-  fontFamily: font,
+  fontFamily: pressStart,
   flexShrink: 0,
   padding: '0 8px',
 };
@@ -76,7 +75,6 @@ export default function HomePage() {
       {/* ── SCROLLING TICKER ── */}
       <div style={styles.tickerBar} aria-label="Live ticker">
         <div style={styles.tickerTrack}>
-          {/* Render content twice — second copy keeps the scroll seamless */}
           {TICKER.map((e, i) => renderEntry(e, `a${i}`))}
           {TICKER.map((e, i) => renderEntry(e, `b${i}`))}
         </div>
@@ -101,16 +99,10 @@ export default function HomePage() {
 
       {/* ── HERO ── */}
       <section style={styles.hero}>
-        {/* Scanline texture */}
-        <div style={styles.scanlines} aria-hidden />
-
-        {/* Radial glow behind title */}
-        <div style={styles.heroGlow} aria-hidden />
-
         <div style={styles.heroInner}>
           <div style={styles.heroBadge}>◈ SOLANA DEFI LAUNCHPAD</div>
 
-          <h1 style={styles.heroTitle} className="hero-pink-neon">
+          <h1 style={styles.heroTitle}>
             BASED<br />
             FARMS
           </h1>
@@ -141,9 +133,6 @@ export default function HomePage() {
         </div>
 
         <div style={styles.featuredCard}>
-          {/* Animated border glow */}
-          <div style={styles.cardGlowBorder} aria-hidden />
-
           <div style={styles.cardInner}>
             {/* Top row: avatar + identity + badge */}
             <div style={styles.cardTop}>
@@ -184,12 +173,12 @@ export default function HomePage() {
               <div style={styles.statDivider} />
               <div style={styles.stat}>
                 <span style={styles.statLabel}>DEX</span>
-                <span style={styles.statVal}>JUPITER V6</span>
+                <span style={styles.statVal}>RAYDIUM</span>
               </div>
               <div style={styles.statDivider} />
               <div style={styles.stat}>
                 <span style={styles.statLabel}>PLATFORM FEE</span>
-                <span style={{ ...styles.statVal, color: '#e879f9' }}>0.3%</span>
+                <span style={{ ...styles.statVal, color: '#f97316' }}>0.3%</span>
               </div>
             </div>
 
@@ -227,9 +216,9 @@ export default function HomePage() {
 
         <div style={styles.stepsGrid}>
           {[
-            { num: '01', title: 'LAUNCH TOKEN', body: 'Deploy your token on Solana with one click. Set supply, name, and symbol.' },
-            { num: '02', title: 'CREATE FARM',  body: 'Deploy a liquidity farm. Set reward rates and duration for your community.' },
-            { num: '03', title: 'SWAP & EARN',  body: 'Trade via Jupiter routing. 0.3% fee split between the platform and farmers.' },
+            { num: '01', title: 'LAUNCH TOKEN',        body: 'Deploy your token with custom bonding curve, Based Score, and optional BONK BURN. Built on Raydium LaunchLab.' },
+            { num: '02', title: 'GRADUATE TO RAYDIUM', body: 'When your bonding curve hits target SOL, your token auto-graduates to a Raydium pool. Deep liquidity. Immediate trading.' },
+            { num: '03', title: 'FARM YIELD',          body: 'Post-graduation your token unlocks Raydium permissionless farms. Stakers earn rewards. Creators earn fees forever.' },
           ].map((step) => (
             <div key={step.num} style={styles.stepCard}>
               <span style={styles.stepNum}>{step.num}</span>
@@ -243,7 +232,7 @@ export default function HomePage() {
       {/* ── FOOTER ── */}
       <footer style={styles.footer}>
         <div style={styles.footerLogo}>
-          BASED<span style={{ color: '#e879f9' }}>FARMS</span>.fun
+          BASED<span style={{ color: '#f97316' }}>FARMS</span>.fun
         </div>
         <p style={styles.footerLine}>BUILT ON SOLANA · POWERED BY RAYDIUM · 0.3% SWAP FEE</p>
         <p style={styles.footerLine}>NOT FINANCIAL ADVICE · DYOR · TRADE AT YOUR OWN RISK</p>
@@ -256,20 +245,20 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     fontFamily: font,
     fontSize: '10px',
-    background: '#0d0015',
+    background: '#0a0a0a',
     minHeight: '100vh',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    color: '#c084fc',
+    color: '#e5e5e5',
     overflowX: 'hidden',
   },
 
   // Ticker
   tickerBar: {
     width: '100%',
-    background: 'rgba(15, 0, 30, 0.85)',
-    borderBottom: '1px solid #3b0764',
+    background: '#111111',
+    borderBottom: '1px solid #1a1a1a',
     overflow: 'hidden',
     padding: '9px 0',
   },
@@ -298,39 +287,39 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'nowrap' as const,
   },
   navLogo: {
+    fontFamily: pressStart,
     fontSize: '13px',
-    color: '#f0abfc',
+    color: '#ffffff',
     letterSpacing: '2px',
-    textShadow: '0 0 16px rgba(240, 171, 252, 0.4)',
     textDecoration: 'none',
   },
-  navAccent: { color: '#e879f9' },
-  navDot: { color: '#6d28d9', fontSize: '10px' },
+  navAccent: { color: '#f97316' },
+  navDot: { color: '#555555', fontSize: '10px' },
   tokensBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
-    padding: '10px 12px',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    padding: '8px 12px',
     background: 'transparent',
-    border: '1px solid #3b0764',
+    border: '1px solid #333333',
     borderRadius: '6px',
-    color: '#a855f7',
+    color: '#888888',
     textDecoration: 'none',
     whiteSpace: 'nowrap',
     display: 'inline-block',
   },
   launchBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
-    padding: '10px 14px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    padding: '8px 14px',
+    background: '#f97316',
     border: 'none',
     borderRadius: '6px',
-    color: '#fff',
+    color: '#000000',
+    fontWeight: '600',
     cursor: 'pointer',
     textDecoration: 'none',
-    boxShadow: '0 0 14px rgba(168, 85, 247, 0.35)',
     whiteSpace: 'nowrap',
     display: 'inline-block',
   },
@@ -343,29 +332,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '40px 16px 52px',
     boxSizing: 'border-box',
     textAlign: 'center',
-    overflow: 'hidden',
-  },
-  scanlines: {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(124,58,237,0.03) 2px, rgba(124,58,237,0.03) 4px)',
-    pointerEvents: 'none',
-    zIndex: 0,
-  },
-  heroGlow: {
-    position: 'absolute',
-    top: '20%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: '300px',
-    height: '300px',
-    background: 'radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%)',
-    pointerEvents: 'none',
-    zIndex: 0,
   },
   heroInner: {
-    position: 'relative',
-    zIndex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -373,27 +341,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   heroBadge: {
     display: 'inline-block',
-    background: 'rgba(88, 28, 135, 0.3)',
-    border: '1px solid #4c1d95',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '20px',
     padding: '5px 16px',
-    fontSize: '8px',
-    color: '#a855f7',
-    letterSpacing: '2px',
+    fontSize: '11px',
+    color: '#888888',
+    letterSpacing: '1px',
   },
   heroTitle: {
     margin: 0,
     fontSize: 'clamp(36px, 12vw, 72px)',
     lineHeight: 1.1,
     letterSpacing: '4px',
-    fontFamily: font,
+    fontFamily: pressStart,
     fontWeight: 400,
+    color: '#ffffff',
   },
   heroTagline: {
     margin: 0,
-    fontSize: 'clamp(7px, 2.2vw, 11px)',
-    color: '#6d28d9',
-    letterSpacing: '3px',
+    fontSize: 'clamp(11px, 2.2vw, 13px)',
+    color: '#666666',
+    letterSpacing: '2px',
     lineHeight: 2.2,
     fontFamily: font,
   },
@@ -406,42 +375,27 @@ const styles: Record<string, React.CSSProperties> = {
   },
   ctaPrimary: {
     fontFamily: font,
-    fontSize: '10px',
-    letterSpacing: '2px',
+    fontSize: '12px',
+    letterSpacing: '1px',
+    fontWeight: '600',
     padding: '14px 22px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     borderRadius: '8px',
-    color: '#fff',
+    color: '#000000',
     textDecoration: 'none',
-    boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)',
     display: 'inline-block',
   },
   ctaSecondary: {
     fontFamily: font,
-    fontSize: '10px',
-    letterSpacing: '2px',
+    fontSize: '12px',
+    letterSpacing: '1px',
     padding: '13px 22px',
     background: 'transparent',
-    border: '1px solid #7c3aed',
+    border: '1px solid #333333',
     borderRadius: '8px',
-    color: '#a855f7',
+    color: '#888888',
     textDecoration: 'none',
     display: 'inline-block',
-  },
-  ctaLaunch: {
-    fontFamily: font,
-    fontSize: '11px',
-    letterSpacing: '3px',
-    padding: '15px 22px',
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
-    borderRadius: '8px',
-    color: '#fff',
-    textDecoration: 'none',
-    boxShadow: '0 0 24px rgba(219, 39, 119, 0.45)',
-    display: 'block',
-    textAlign: 'center' as const,
-    width: '100%',
-    boxSizing: 'border-box' as const,
   },
 
   // Featured section
@@ -460,48 +414,36 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   sectionTitle: {
-    color: '#a855f7',
-    fontSize: '11px',
-    letterSpacing: '2px',
-    textShadow: '0 0 10px rgba(168, 85, 247, 0.4)',
+    color: '#e5e5e5',
+    fontSize: '12px',
+    letterSpacing: '1.5px',
+    fontFamily: font,
   },
   sectionLive: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    color: '#4c1d95',
-    fontSize: '8px',
-    letterSpacing: '2px',
+    color: '#555555',
+    fontSize: '11px',
+    letterSpacing: '1px',
   },
   liveDot: {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    background: '#e879f9',
-    boxShadow: '0 0 8px rgba(232, 121, 249, 0.8)',
+    background: '#f97316',
     display: 'inline-block',
     animation: 'pulse 2s ease-in-out infinite',
   },
 
   // Card
   featuredCard: {
-    position: 'relative',
-    borderRadius: '14px',
+    borderRadius: '12px',
     overflow: 'hidden',
-    animation: 'border-glow 4s ease-in-out infinite',
-    border: '1px solid #7c3aed',
-  },
-  cardGlowBorder: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: '14px',
-    background: 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(219,39,119,0.04) 100%)',
-    pointerEvents: 'none',
+    border: '1px solid #222222',
   },
   cardInner: {
-    position: 'relative',
-    zIndex: 1,
-    background: 'linear-gradient(160deg, #0d0015 0%, #11001e 60%, #0a001a 100%)',
+    background: '#111111',
     padding: '20px',
     display: 'flex',
     flexDirection: 'column',
@@ -518,7 +460,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     overflow: 'hidden',
     flexShrink: 0,
-    border: '1px solid #4c1d95',
+    border: '1px solid #222222',
     background: '#000',
     boxSizing: 'border-box',
   },
@@ -549,59 +491,58 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
   },
   cardSymbol: {
-    color: '#e879f9',
+    fontFamily: pressStart,
+    color: '#f97316',
     fontSize: '14px',
     letterSpacing: '1px',
-    textShadow: '0 0 10px rgba(232, 121, 249, 0.4)',
   },
   verifiedBadge: {
-    background: 'rgba(124, 58, 237, 0.2)',
-    border: '1px solid #7c3aed',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '4px',
     padding: '2px 6px',
-    fontSize: '7px',
-    color: '#a855f7',
-    letterSpacing: '1px',
+    fontSize: '10px',
+    color: '#888888',
+    letterSpacing: '0.5px',
   },
   cardName: {
-    color: '#c084fc',
-    fontSize: '9px',
-    letterSpacing: '2px',
+    color: '#e5e5e5',
+    fontSize: '11px',
+    letterSpacing: '1px',
   },
   cardNetwork: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '2px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '1px',
   },
   farmSoonBadge: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '3px',
-    background: 'rgba(219, 39, 119, 0.1)',
-    border: '1px solid #db2777',
+    background: 'rgba(249, 115, 22, 0.08)',
+    border: '1px solid rgba(249, 115, 22, 0.3)',
     borderRadius: '8px',
     padding: '6px 10px',
     flexShrink: 0,
-    boxShadow: '0 0 12px rgba(219, 39, 119, 0.15)',
   },
   farmSoonTop: {
-    color: '#f472b6',
-    fontSize: '9px',
-    letterSpacing: '1px',
+    color: '#f97316',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   farmSoonBottom: {
-    color: '#db2777',
-    fontSize: '6px',
-    letterSpacing: '1px',
+    color: '#888888',
+    fontSize: '9px',
+    letterSpacing: '0.5px',
     whiteSpace: 'nowrap',
   },
 
   // Stats
   statStrip: {
     display: 'flex',
-    background: 'rgba(15, 0, 30, 0.5)',
-    border: '1px solid #2d0052',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '8px',
     overflow: 'hidden',
     flexWrap: 'wrap',
@@ -616,20 +557,20 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: '80px',
   },
   statLabel: {
-    color: '#3b0764',
-    fontSize: '6px',
-    letterSpacing: '2px',
+    color: '#555555',
+    fontSize: '9px',
+    letterSpacing: '1px',
     textAlign: 'center',
   },
   statVal: {
-    color: '#a855f7',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    color: '#e5e5e5',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
     textAlign: 'center',
   },
   statDivider: {
     width: '1px',
-    background: '#2d0052',
+    background: '#1a1a1a',
     margin: '8px 0',
     alignSelf: 'stretch',
   },
@@ -643,27 +584,27 @@ const styles: Record<string, React.CSSProperties> = {
   actionPrimary: {
     flex: 1,
     fontFamily: font,
-    fontSize: '10px',
-    letterSpacing: '2px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '1px',
     padding: '13px 16px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     borderRadius: '8px',
-    color: '#fff',
+    color: '#000000',
     textDecoration: 'none',
     textAlign: 'center',
-    boxShadow: '0 0 16px rgba(168, 85, 247, 0.35)',
     display: 'inline-block',
     minWidth: '120px',
   },
   actionSecondary: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
     padding: '12px 14px',
     background: 'transparent',
-    border: '1px solid #3b0764',
+    border: '1px solid #222222',
     borderRadius: '8px',
-    color: '#6d28d9',
+    color: '#555555',
     textDecoration: 'none',
     display: 'inline-block',
     whiteSpace: 'nowrap',
@@ -685,8 +626,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
   },
   stepCard: {
-    background: 'rgba(88, 28, 135, 0.07)',
-    border: '1px solid #2d0052',
+    background: '#111111',
+    border: '1px solid #1a1a1a',
     borderRadius: '10px',
     padding: '16px 14px',
     display: 'flex',
@@ -694,21 +635,24 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '10px',
   },
   stepNum: {
-    color: '#3b0764',
+    color: '#333333',
     fontSize: '20px',
     letterSpacing: '0',
-    fontFamily: font,
+    fontFamily: pressStart,
   },
   stepTitle: {
-    color: '#a855f7',
-    fontSize: '9px',
-    letterSpacing: '2px',
+    color: '#f97316',
+    fontSize: '11px',
+    letterSpacing: '1px',
+    fontFamily: font,
+    fontWeight: '600',
   },
   stepBody: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '1px',
-    lineHeight: 2,
+    color: '#666666',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
+    lineHeight: 1.7,
+    fontFamily: font,
   },
 
   // Footer
@@ -717,23 +661,24 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: '600px',
     padding: '24px 16px 32px',
     boxSizing: 'border-box',
-    borderTop: '1px solid #1e0035',
+    borderTop: '1px solid #1a1a1a',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '10px',
   },
   footerLogo: {
+    fontFamily: pressStart,
     fontSize: '12px',
-    color: '#f0abfc',
+    color: '#ffffff',
     letterSpacing: '2px',
-    textShadow: '0 0 12px rgba(240, 171, 252, 0.3)',
   },
   footerLine: {
     margin: 0,
-    color: '#2d0052',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#444444',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
     textAlign: 'center',
+    fontFamily: font,
   },
 };

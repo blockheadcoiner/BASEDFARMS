@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from './WalletProvider';
 
-const font = '"Press Start 2P", "Courier New", monospace';
+const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
@@ -40,12 +40,14 @@ export default function ConnectWalletButton() {
         style={styles.connectBtn}
         onClick={() => setVisible(true)}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow =
-            '0 0 20px rgba(168, 85, 247, 0.5)';
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.borderColor = '#f97316';
+          btn.style.color = '#ffffff';
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow =
-            '0 0 14px rgba(168, 85, 247, 0.25)';
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.borderColor = '#333333';
+          btn.style.color = '#888888';
         }}
       >
         CONNECT WALLET
@@ -61,12 +63,14 @@ export default function ConnectWalletButton() {
         style={styles.connectedBtn}
         onClick={() => setDropdownOpen((o) => !o)}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = '#a855f7';
-          (e.currentTarget as HTMLButtonElement).style.color = '#e879f9';
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.borderColor = '#16a34a';
+          btn.style.color = '#4ade80';
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = '#7c3aed';
-          (e.currentTarget as HTMLButtonElement).style.color = '#c084fc';
+          const btn = e.currentTarget as HTMLButtonElement;
+          btn.style.borderColor = '#22c55e';
+          btn.style.color = '#22c55e';
         }}
       >
         <span style={styles.connectedDot} />
@@ -86,16 +90,16 @@ export default function ConnectWalletButton() {
               setDropdownOpen(false);
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                'rgba(219, 39, 119, 0.15)';
-              (e.currentTarget as HTMLButtonElement).style.borderColor = '#db2777';
-              (e.currentTarget as HTMLButtonElement).style.color = '#f472b6';
+              const btn = e.currentTarget as HTMLButtonElement;
+              btn.style.background = 'rgba(239, 68, 68, 0.12)';
+              btn.style.borderColor = '#ef4444';
+              btn.style.color = '#fca5a5';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                'rgba(190, 18, 60, 0.08)';
-              (e.currentTarget as HTMLButtonElement).style.borderColor = '#9f1239';
-              (e.currentTarget as HTMLButtonElement).style.color = '#fb7185';
+              const btn = e.currentTarget as HTMLButtonElement;
+              btn.style.background = 'transparent';
+              btn.style.borderColor = '#333333';
+              btn.style.color = '#888888';
             }}
           >
             ✕ DISCONNECT
@@ -113,27 +117,26 @@ const styles: Record<string, React.CSSProperties> = {
   },
   connectBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
-    padding: '10px 14px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
-    border: 'none',
+    fontSize: '13px',
+    letterSpacing: '0.5px',
+    padding: '8px 14px',
+    background: 'transparent',
+    border: '1px solid #333333',
     borderRadius: '6px',
-    color: '#fff',
+    color: '#888888',
     cursor: 'pointer',
-    boxShadow: '0 0 14px rgba(168, 85, 247, 0.25)',
     whiteSpace: 'nowrap',
-    transition: 'box-shadow 0.15s',
+    transition: 'border-color 0.15s, color 0.15s',
   },
   connectedBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
-    padding: '9px 12px',
-    background: 'rgba(88, 28, 135, 0.2)',
-    border: '1px solid #7c3aed',
+    fontSize: '13px',
+    letterSpacing: '0.5px',
+    padding: '8px 12px',
+    background: 'transparent',
+    border: '1px solid #22c55e',
     borderRadius: '6px',
-    color: '#c084fc',
+    color: '#22c55e',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
     display: 'flex',
@@ -145,23 +148,21 @@ const styles: Record<string, React.CSSProperties> = {
     width: '6px',
     height: '6px',
     borderRadius: '50%',
-    background: '#a855f7',
-    boxShadow: '0 0 6px rgba(168, 85, 247, 0.8)',
+    background: '#22c55e',
     flexShrink: 0,
     display: 'inline-block',
   },
   chevron: {
     fontSize: '6px',
-    color: '#6d28d9',
+    color: '#555555',
   },
   dropdown: {
     position: 'absolute',
     top: 'calc(100% + 6px)',
     right: 0,
-    background: '#0d0020',
-    border: '1px solid #7c3aed',
+    background: '#111111',
+    border: '1px solid #222222',
     borderRadius: '10px',
-    boxShadow: '0 0 24px rgba(124, 58, 237, 0.3)',
     padding: '10px',
     display: 'flex',
     flexDirection: 'column',
@@ -171,22 +172,22 @@ const styles: Record<string, React.CSSProperties> = {
   },
   dropdownAddr: {
     fontFamily: font,
-    fontSize: '7px',
-    color: '#6d28d9',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    color: '#555555',
+    letterSpacing: '0.5px',
     padding: '4px 6px',
     wordBreak: 'break-all',
     lineHeight: 1.8,
   },
   disconnectBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    letterSpacing: '0.5px',
     padding: '9px 12px',
-    background: 'rgba(190, 18, 60, 0.08)',
-    border: '1px solid #9f1239',
+    background: 'transparent',
+    border: '1px solid #333333',
     borderRadius: '6px',
-    color: '#fb7185',
+    color: '#888888',
     cursor: 'pointer',
     width: '100%',
     textAlign: 'left',

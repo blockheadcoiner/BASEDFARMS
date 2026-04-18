@@ -21,7 +21,8 @@ import {
 } from '@/lib/farmClient';
 
 const DECIMALS = 6;
-const font = 'var(--font-press-start), "Courier New", monospace';
+const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
+const pressStart = 'var(--font-press-start), "Courier New", monospace';
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
 
@@ -111,7 +112,6 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Toast auto-clear
   useEffect(() => {
     if (!txStatus) return;
     const t = setTimeout(() => setTxStatus(null), 6000);
@@ -260,8 +260,8 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
 
       {/* TX status toast */}
       {txStatus && (
-        <div style={{ ...s.toast, borderColor: txStatus.ok ? '#7c3aed' : '#dc2626' }}>
-          <span style={{ color: txStatus.ok ? '#a78bfa' : '#f87171' }}>{txStatus.msg}</span>
+        <div style={{ ...s.toast, borderColor: txStatus.ok ? '#f97316' : '#ef4444' }}>
+          <span style={{ color: txStatus.ok ? '#f97316' : '#ef4444' }}>{txStatus.msg}</span>
         </div>
       )}
 
@@ -341,7 +341,7 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
                     </div>
                     <div style={s.posItem}>
                       <span style={s.posLabel}>PENDING REWARDS</span>
-                      <span style={{ ...s.posValue, color: '#e879f9' }}>{fmtBn(pending)}</span>
+                      <span style={{ ...s.posValue, color: '#f97316' }}>{fmtBn(pending)}</span>
                     </div>
                     <div style={s.posItem}>
                       <span style={s.posLabel}>WALLET BALANCE</span>
@@ -349,7 +349,7 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
                     </div>
                     <div style={s.posItem}>
                       <span style={s.posLabel}>UNLOCK IN</span>
-                      <span style={{ ...s.posValue, color: unlock === 'Unlocked' ? '#4ade80' : '#c084fc' }}>
+                      <span style={{ ...s.posValue, color: unlock === 'Unlocked' ? '#4ade80' : '#e5e5e5' }}>
                         {unlock}
                       </span>
                     </div>
@@ -453,7 +453,7 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
                 </div>
                 <div style={s.statItem}>
                   <span style={s.statLabel}>APY</span>
-                  <span style={{ ...s.statValue, color: '#e879f9' }}>
+                  <span style={{ ...s.statValue, color: '#f97316' }}>
                     {apy ? `${apy}%` : '—'}
                   </span>
                 </div>
@@ -467,7 +467,7 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
                 </div>
                 <div style={s.statItem}>
                   <span style={s.statLabel}>REWARDS END IN</span>
-                  <span style={{ ...s.statValue, color: '#fbbf24' }}>{daysLeft}</span>
+                  <span style={{ ...s.statValue, color: '#f59e0b' }}>{daysLeft}</span>
                 </div>
                 <div style={s.statItem}>
                   <span style={s.statLabel}>MIN LOCK</span>
@@ -482,7 +482,7 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
                 </div>
                 <div style={s.statItem}>
                   <span style={s.statLabel}>FARM PDA</span>
-                  <span style={{ ...s.statValue, fontSize: '7px' }}>{shortKey(farm.publicKey)}</span>
+                  <span style={{ ...s.statValue, fontSize: '10px' }}>{shortKey(farm.publicKey)}</span>
                 </div>
               </div>
             </div>
@@ -573,6 +573,8 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '12px',
     width: '100%',
+    fontFamily: font,
+    fontSize: '12px',
   },
 
   // Devnet banner
@@ -580,60 +582,60 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    background: 'rgba(124, 58, 237, 0.08)',
-    border: '1px solid rgba(124, 58, 237, 0.25)',
+    background: '#111111',
+    border: '1px solid #1a1a1a',
     borderRadius: '8px',
     padding: '8px 12px',
   },
   devnetBadge: {
-    background: '#4c1d95',
-    color: '#c084fc',
-    fontSize: '7px',
+    background: '#1a1a1a',
+    color: '#888888',
+    fontSize: '9px',
     letterSpacing: '1px',
     padding: '2px 6px',
     borderRadius: '4px',
     whiteSpace: 'nowrap' as const,
+    fontFamily: font,
   },
   devnetText: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: '7px',
-    letterSpacing: '0.5px',
+    color: '#666666',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     flex: 1,
   },
   refreshBtn: {
     background: 'transparent',
     border: 'none',
-    color: '#7c3aed',
-    fontSize: '14px',
+    color: '#555555',
+    fontSize: '16px',
     cursor: 'pointer',
     padding: '0 4px',
-    fontFamily: font,
     lineHeight: 1,
   },
 
   // Toast
   toast: {
     padding: '10px 14px',
-    background: 'rgba(13,0,32,0.95)',
-    border: '1px solid #7c3aed',
+    background: '#111111',
+    border: '1px solid #333333',
     borderRadius: '8px',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    letterSpacing: '0.3px',
   },
 
   // Deploy button
   deployBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     padding: '10px 16px',
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '8px',
-    color: '#fff',
+    color: '#000000',
     cursor: 'pointer',
     alignSelf: 'flex-end',
-    boxShadow: '0 0 12px rgba(124, 58, 237, 0.35)',
   },
 
   // Loading
@@ -646,19 +648,19 @@ const s: Record<string, React.CSSProperties> = {
   },
   spinner: {
     fontSize: '24px',
-    color: '#7c3aed',
-    animation: 'spin 2s linear infinite',
+    color: '#444444',
+    animation: 'pulse 2s ease-in-out infinite',
   },
   loadingText: {
-    color: '#4c1d95',
-    fontSize: '8px',
-    letterSpacing: '2px',
+    color: '#555555',
+    fontSize: '12px',
+    letterSpacing: '0.5px',
   },
 
   // Empty state
   emptyCard: {
-    background: 'linear-gradient(160deg, #0d0015 0%, #100020 100%)',
-    border: '1px solid #3b0764',
+    background: '#111111',
+    border: '1px solid #1a1a1a',
     borderRadius: '12px',
     padding: '36px 24px',
     display: 'flex',
@@ -669,25 +671,26 @@ const s: Record<string, React.CSSProperties> = {
   },
   emptyIcon: {
     fontSize: '28px',
-    color: '#3b0764',
+    color: '#333333',
   },
   emptyTitle: {
-    color: '#7c3aed',
-    fontSize: '10px',
-    letterSpacing: '2px',
+    color: '#888888',
+    fontSize: '13px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
   },
   emptyBody: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: '8px',
-    lineHeight: '1.8',
-    letterSpacing: '0.5px',
+    color: '#555555',
+    fontSize: '12px',
+    lineHeight: '1.7',
+    letterSpacing: '0.3px',
     maxWidth: '280px',
   },
 
   // Farm card
   farmCard: {
-    background: 'linear-gradient(160deg, #0d0015 0%, #100020 100%)',
-    border: '1px solid rgba(124, 58, 237, 0.3)',
+    background: '#111111',
+    border: '1px solid #1a1a1a',
     borderRadius: '12px',
     overflow: 'hidden',
   },
@@ -696,14 +699,14 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px 16px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
-    background: 'rgba(124, 58, 237, 0.06)',
+    borderBottom: '1px solid #1a1a1a',
+    background: '#0f0f0f',
   },
   farmTitle: {
-    color: '#e879f9',
-    fontSize: '10px',
-    letterSpacing: '2px',
-    textShadow: '0 0 8px rgba(232,121,249,0.4)',
+    fontFamily: pressStart,
+    color: '#f97316',
+    fontSize: '9px',
+    letterSpacing: '1px',
   },
   farmMeta: {
     display: 'flex',
@@ -711,33 +714,34 @@ const s: Record<string, React.CSSProperties> = {
     gap: '6px',
   },
   farmMetaKey: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   farmMetaVal: {
-    color: '#a855f7',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#888888',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
 
   // Section
   section: {
     padding: '14px 16px',
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
+    borderBottom: '1px solid #0f0f0f',
   },
   sectionTitle: {
-    color: '#c084fc',
-    fontSize: '8px',
-    letterSpacing: '2px',
+    color: '#888888',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     marginBottom: '12px',
     paddingBottom: '6px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid #1a1a1a',
   },
   connectNote: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '12px',
+    letterSpacing: '0.3px',
     textAlign: 'center',
     padding: '12px 0',
   },
@@ -755,14 +759,15 @@ const s: Record<string, React.CSSProperties> = {
     gap: '4px',
   },
   posLabel: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   posValue: {
     color: '#ffffff',
-    fontSize: '10px',
-    letterSpacing: '0.5px',
+    fontSize: '13px',
+    letterSpacing: '0.3px',
+    fontWeight: '500',
   },
 
   // Input rows
@@ -774,66 +779,67 @@ const s: Record<string, React.CSSProperties> = {
   },
   amountInput: {
     fontFamily: font,
-    fontSize: '8px',
+    fontSize: '12px',
     flex: 1,
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(124,58,237,0.3)',
+    background: '#0f0f0f',
+    border: '1px solid #222222',
     borderRadius: '6px',
     padding: '8px 10px',
     color: '#ffffff',
     outline: 'none',
-    letterSpacing: '0.5px',
+    letterSpacing: '0.3px',
   },
   maxBtn: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.3px',
     padding: '6px 8px',
-    background: 'rgba(124,58,237,0.15)',
-    border: '1px solid rgba(124,58,237,0.3)',
+    background: '#1a1a1a',
+    border: '1px solid #333333',
     borderRadius: '5px',
-    color: '#a855f7',
+    color: '#888888',
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
   actionBtn: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    fontWeight: '600',
+    letterSpacing: '0.3px',
     padding: '7px 12px',
-    background: 'linear-gradient(135deg, #6d28d9, #5b21b6)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '6px',
-    color: '#fff',
+    color: '#000000',
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
   },
   actionBtnDisabled: {
-    background: 'rgba(88,28,135,0.2)',
-    color: '#3b0764',
+    background: '#1a1a1a',
+    color: '#333333',
     cursor: 'not-allowed',
   },
 
   // Claim button
   claimBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.3px',
     padding: '10px',
     width: '100%',
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '7px',
-    color: '#fff',
+    color: '#000000',
     cursor: 'pointer',
     marginTop: '4px',
-    boxShadow: '0 0 10px rgba(219,39,119,0.3)',
   },
   claimBtnDisabled: {
-    background: 'rgba(88,28,135,0.15)',
-    color: '#3b0764',
+    background: '#1a1a1a',
+    color: '#333333',
     cursor: 'not-allowed',
-    boxShadow: 'none',
   },
 
   // Stats grid
@@ -848,21 +854,22 @@ const s: Record<string, React.CSSProperties> = {
     gap: '4px',
   },
   statLabel: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   statValue: {
-    color: '#e2b4ff',
-    fontSize: '9px',
-    letterSpacing: '0.5px',
+    color: '#e5e5e5',
+    fontSize: '12px',
+    letterSpacing: '0.3px',
+    fontWeight: '500',
   },
 
   // Modal
   modalOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.75)',
+    background: 'rgba(0,0,0,0.8)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -870,8 +877,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: '16px',
   },
   modal: {
-    background: 'linear-gradient(160deg, #0d0015 0%, #130025 100%)',
-    border: '1px solid rgba(219,39,119,0.4)',
+    background: '#111111',
+    border: '1px solid #222222',
     borderRadius: '14px',
     padding: '24px 20px',
     width: '100%',
@@ -879,18 +886,17 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
-    boxShadow: '0 0 40px rgba(219,39,119,0.2)',
   },
   modalTitle: {
-    color: '#e879f9',
-    fontSize: '13px',
-    letterSpacing: '3px',
-    textShadow: '0 0 12px rgba(232,121,249,0.5)',
+    color: '#ffffff',
+    fontSize: '16px',
+    fontWeight: '700',
+    letterSpacing: '1px',
   },
   modalSubtitle: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#666666',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     marginTop: '-8px',
   },
   modalField: {
@@ -899,45 +905,46 @@ const s: Record<string, React.CSSProperties> = {
     gap: '6px',
   },
   modalLabel: {
-    color: '#e2b4ff',
-    fontSize: '7px',
-    letterSpacing: '1.5px',
+    color: '#888888',
+    fontSize: '10px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
   },
   modalStatic: {
-    color: '#a855f7',
-    fontSize: '8px',
-    letterSpacing: '0.5px',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(124,58,237,0.2)',
+    color: '#e5e5e5',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '6px',
     padding: '8px 10px',
     wordBreak: 'break-all',
   },
   modalInput: {
     fontFamily: font,
-    fontSize: '9px',
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(124,58,237,0.3)',
+    fontSize: '12px',
+    background: '#0f0f0f',
+    border: '1px solid #333333',
     borderRadius: '6px',
     padding: '9px 12px',
     color: '#ffffff',
     outline: 'none',
-    letterSpacing: '0.5px',
+    letterSpacing: '0.3px',
   },
   modalHint: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: '7px',
-    letterSpacing: '0.5px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.3px',
   },
   modalNote: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: '7px',
-    letterSpacing: '0.5px',
-    lineHeight: '1.8',
-    background: 'rgba(124,58,237,0.06)',
+    color: '#555555',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
+    lineHeight: '1.7',
+    background: '#0f0f0f',
     borderRadius: '6px',
     padding: '8px 10px',
-    border: '1px solid rgba(124,58,237,0.15)',
+    border: '1px solid #1a1a1a',
   },
   modalActions: {
     display: 'flex',
@@ -947,31 +954,30 @@ const s: Record<string, React.CSSProperties> = {
   },
   cancelBtn: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    letterSpacing: '0.3px',
     padding: '9px 14px',
     background: 'transparent',
-    border: '1px solid rgba(219,39,119,0.25)',
+    border: '1px solid #333333',
     borderRadius: '7px',
-    color: 'rgba(255,255,255,0.5)',
+    color: '#888888',
     cursor: 'pointer',
   },
   deployModalBtn: {
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     padding: '9px 18px',
-    background: 'linear-gradient(135deg, #db2777, #7c3aed)',
+    background: '#f97316',
     border: 'none',
     borderRadius: '7px',
-    color: '#fff',
+    color: '#000000',
     cursor: 'pointer',
-    boxShadow: '0 0 12px rgba(219,39,119,0.35)',
   },
   deployModalBtnDisabled: {
-    background: 'rgba(88,28,135,0.2)',
-    color: '#4c1d95',
+    background: '#1a1a1a',
+    color: '#333333',
     cursor: 'not-allowed',
-    boxShadow: 'none',
   },
 };

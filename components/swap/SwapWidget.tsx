@@ -16,8 +16,7 @@ import { useWalletModal } from '@/components/WalletProvider';
 // ── Constants ────────────────────────────────────────────────────────────────
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PLATFORM_FEE_PCT = '0.3';
-const DEFAULT_SLIPPAGE_BPS = 500; // 5%
-// letsbonk.fun LaunchLab tokens always use 6 decimals
+const DEFAULT_SLIPPAGE_BPS = 500;
 const LAUNCHPAD_TOKEN_DECIMALS = 6;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -52,9 +51,9 @@ function formatAmount(raw: string, decimals = 9): string {
 
 function formatPriceImpact(pct: string): { label: string; color: string } {
   const n = Math.abs(parseFloat(pct));
-  if (n < 0.1) return { label: `${n.toFixed(2)}%`, color: '#a855f7' };
+  if (n < 0.1) return { label: `${n.toFixed(2)}%`, color: '#22c55e' };
   if (n < 1) return { label: `${n.toFixed(2)}%`, color: '#f59e0b' };
-  return { label: `${n.toFixed(2)}%`, color: '#ec4899' };
+  return { label: `${n.toFixed(2)}%`, color: '#ef4444' };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -75,7 +74,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [swapSummary, setSwapSummary] = useState<{ input: string; output: string } | null>(null);
 
-  // ── Slippage state ─────────────────────────────────────────────────────────
   const [slippageMode, setSlippageMode] = useState<SlippageMode>('500');
   const [customSlippage, setCustomSlippage] = useState('');
   const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
@@ -100,7 +98,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     return () => { cancelled = true; };
   }, [publicKey, connection]);
 
-  // ── Token balance (needed for sell direction) ─────────────────────────────
+  // ── Token balance ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!publicKey) { setTokenBalance(null); return; }
     let cancelled = false;
@@ -132,8 +130,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     setSwapErrorDetail(null);
     setQuote(null);
 
-    // For buy: input is SOL → convert to lamports
-    // For sell: input is token → convert using LAUNCHPAD_TOKEN_DECIMALS
     const inputDecimals = dir === 'buy' ? 9 : LAUNCHPAD_TOKEN_DECIMALS;
     const rawAmount = Math.round(parsed * Math.pow(10, inputDecimals));
 
@@ -143,7 +139,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       let result: NormalizedQuote;
 
       if (dir === 'buy') {
-        // BUY: SOL → token. Try CPMM first, fall through to LaunchLab.
         try {
           result = await getRaydiumQuote(SOL_MINT, tokenMint, rawAmount);
           console.log('[SwapWidget] CPMM buy quote success');
@@ -154,7 +149,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           result = await getLaunchpadQuote(tokenMint, rawAmount, bps, 'buy');
         }
       } else {
-        // SELL: token → SOL. Try CPMM first (reversed mints), fall through.
         try {
           result = await getRaydiumQuote(tokenMint, SOL_MINT, rawAmount);
           console.log('[SwapWidget] CPMM sell quote success');
@@ -279,7 +273,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       setInputAmount('');
       setQuote(null);
 
-      // Refresh balances
       connection.getBalance(publicKey).then(b => setSolBalance(b / LAMPORTS_PER_SOL)).catch(() => {});
       try {
         const ata = getAssociatedTokenAddressSync(new PublicKey(tokenMint), publicKey);
@@ -313,7 +306,6 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
   const warnHighImpact = !!quote && priceImpactFloat > slippagePct;
   const warnLowSlippage = isLaunchpad && slippageBps < 100;
 
-  // Balance used for the current direction
   const inputBalance = direction === 'buy' ? solBalance : tokenBalance;
   const inputSymbol  = direction === 'buy' ? '◎ SOL' : `◈ ${tokenSymbol}`;
   const outputSymbol = direction === 'buy' ? `◈ ${tokenSymbol}` : '◎ SOL';
@@ -439,9 +431,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
               style={{
                 ...styles.progressFill,
                 width: `${Math.min(quote.bondingProgress.pct, 100)}%`,
-                background: quote.bondingProgress.pct >= 100
-                  ? 'linear-gradient(90deg, #7c3aed, #ec4899)'
-                  : `linear-gradient(90deg, #7c3aed ${100 - quote.bondingProgress.pct}%, #a855f7 100%)`,
+                background: quote.bondingProgress.pct >= 100 ? '#22c55e' : '#f97316',
               }}
             />
           </div>
@@ -464,7 +454,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
           {quote.route && (
             <div style={styles.detailRow}>
               <span style={styles.detailKey}>ROUTE</span>
-              <span style={{ ...styles.detailValue, color: '#c084fc' }}>{quote.route}</span>
+              <span style={{ ...styles.detailValue, color: '#e5e5e5' }}>{quote.route}</span>
             </div>
           )}
           <div style={styles.detailRow}>
@@ -609,19 +599,19 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const fontStack = '"Press Start 2P", "Courier New", monospace';
+const fontStack = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
+const pressStart = 'var(--font-press-start), "Courier New", monospace';
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
     fontFamily: fontStack,
-    fontSize: '10px',
-    background: 'linear-gradient(160deg, #0d0015 0%, #100020 60%, #0a001a 100%)',
-    border: '1px solid #7c3aed',
+    fontSize: '12px',
+    background: '#111111',
+    border: '1px solid #222222',
     borderRadius: '12px',
     padding: '20px',
     width: '100%',
     maxWidth: '420px',
-    boxShadow: '0 0 30px rgba(168, 85, 247, 0.25), inset 0 0 60px rgba(88, 28, 135, 0.08)',
     display: 'flex',
     flexDirection: 'column',
     gap: '12px',
@@ -631,16 +621,17 @@ const styles: Record<string, React.CSSProperties> = {
   directionToggle: {
     display: 'flex',
     gap: '6px',
-    background: 'rgba(15, 0, 30, 0.6)',
-    border: '1px solid #3b0764',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '8px',
     padding: '4px',
   },
   dirBtn: {
     flex: 1,
     fontFamily: fontStack,
-    fontSize: '8px',
-    letterSpacing: '2px',
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
     padding: '8px 0',
     border: 'none',
     borderRadius: '5px',
@@ -648,18 +639,16 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'all 0.15s ease',
   },
   dirBtnBuy: {
-    background: 'linear-gradient(135deg, #059669, #10b981)',
-    color: '#fff',
-    boxShadow: '0 0 12px rgba(16, 185, 129, 0.45)',
+    background: '#22c55e',
+    color: '#000000',
   },
   dirBtnSell: {
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
-    color: '#fff',
-    boxShadow: '0 0 12px rgba(219, 39, 119, 0.45)',
+    background: '#ef4444',
+    color: '#ffffff',
   },
   dirBtnInactive: {
     background: 'transparent',
-    color: '#4c1d95',
+    color: '#444444',
   },
   // ── Header ─────────────────────────────────────────────────────────────────
   header: {
@@ -667,13 +656,13 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingBottom: '8px',
-    borderBottom: '1px solid #3b0764',
+    borderBottom: '1px solid #1a1a1a',
   },
   headerTitle: {
-    color: '#e879f9',
-    fontSize: '12px',
-    letterSpacing: '2px',
-    textShadow: '0 0 10px rgba(232, 121, 249, 0.6)',
+    fontFamily: pressStart,
+    color: '#ffffff',
+    fontSize: '10px',
+    letterSpacing: '1px',
   },
   headerRight: {
     display: 'flex',
@@ -681,27 +670,27 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '6px',
   },
   routerBadge: {
-    color: '#6d28d9',
-    fontSize: '6px',
-    letterSpacing: '1px',
-    background: 'rgba(88, 28, 135, 0.2)',
-    border: '1px solid #3b0764',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
+    background: '#1a1a1a',
+    border: '1px solid #222222',
     borderRadius: '4px',
     padding: '2px 5px',
   },
   feeTag: {
-    color: '#a855f7',
-    background: 'rgba(88, 28, 135, 0.4)',
-    border: '1px solid #7c3aed',
+    color: '#f97316',
+    background: 'rgba(249,115,22,0.1)',
+    border: '1px solid rgba(249,115,22,0.3)',
     borderRadius: '4px',
     padding: '2px 6px',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   // ── Token boxes ────────────────────────────────────────────────────────────
   tokenBox: {
-    background: 'rgba(88, 28, 135, 0.12)',
-    border: '1px solid #4c1d95',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '8px',
     padding: '12px 14px',
     display: 'flex',
@@ -715,76 +704,76 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '6px',
   },
   youLabel: {
-    color: '#4c1d95',
-    fontSize: '6px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
   },
   tokenName: {
-    color: '#c084fc',
-    fontSize: '10px',
-    letterSpacing: '1px',
+    color: '#e5e5e5',
+    fontSize: '12px',
+    letterSpacing: '0.5px',
     display: 'flex',
     alignItems: 'center',
   },
   balanceBtn: {
     background: 'transparent',
-    border: '1px solid #6d28d9',
+    border: '1px solid #333333',
     borderRadius: '4px',
-    color: '#a855f7',
+    color: '#888888',
     fontFamily: fontStack,
-    fontSize: '8px',
+    fontSize: '10px',
     padding: '2px 6px',
     cursor: 'pointer',
-    letterSpacing: '1px',
+    letterSpacing: '0.3px',
     flexShrink: 0,
   },
   lockedTag: {
-    color: '#6d28d9',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.5px',
     flexShrink: 0,
   },
   input: {
     background: 'transparent',
     border: 'none',
     outline: 'none',
-    color: '#f0abfc',
+    color: '#ffffff',
     fontFamily: fontStack,
-    fontSize: '18px',
+    fontSize: '20px',
+    fontWeight: '500',
     width: '100%',
-    caretColor: '#e879f9',
+    caretColor: '#f97316',
   },
   outputAmount: {
-    fontSize: '18px',
-    minHeight: '27px',
+    fontSize: '20px',
+    minHeight: '30px',
     display: 'flex',
     alignItems: 'center',
   },
-  outputValue: { color: '#f0abfc' },
+  outputValue: { color: '#ffffff', fontWeight: '500' },
   quoting: {
-    color: '#7c3aed',
-    fontSize: '10px',
+    color: '#555555',
+    fontSize: '12px',
     animation: 'pulse 1s infinite',
-    letterSpacing: '2px',
+    letterSpacing: '1px',
   },
-  placeholder: { color: '#4c1d95' },
-  noLiquidity: { color: '#db2777', fontSize: '10px', letterSpacing: '1px' },
+  placeholder: { color: '#333333' },
+  noLiquidity: { color: '#888888', fontSize: '12px', letterSpacing: '0.5px' },
   // ── Arrow ──────────────────────────────────────────────────────────────────
   arrowRow: { display: 'flex', alignItems: 'center', gap: '8px' },
   arrowLine: {
     flex: 1,
     height: '1px',
-    background: 'linear-gradient(90deg, transparent, #3b0764)',
+    background: '#1a1a1a',
   },
   arrow: {
-    color: '#7c3aed',
+    color: '#333333',
     fontSize: '12px',
-    textShadow: '0 0 8px rgba(124, 58, 237, 0.8)',
   },
   // ── Details ────────────────────────────────────────────────────────────────
   details: {
-    background: 'rgba(15, 0, 30, 0.6)',
-    border: '1px solid #3b0764',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '6px',
     padding: '10px 12px',
     display: 'flex',
@@ -798,41 +787,41 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '8px',
   },
   detailKey: {
-    color: '#6d28d9',
-    letterSpacing: '1px',
-    fontSize: '8px',
+    color: '#555555',
+    letterSpacing: '0.5px',
+    fontSize: '10px',
     flexShrink: 0,
   },
   detailValue: {
-    color: '#a855f7',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    color: '#e5e5e5',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     textAlign: 'right',
     wordBreak: 'break-all',
   },
   // ── Error / success ────────────────────────────────────────────────────────
   errorBox: {
-    background: 'rgba(190, 18, 60, 0.12)',
-    border: '1px solid #9f1239',
+    background: 'rgba(239,68,68,0.08)',
+    border: '1px solid rgba(239,68,68,0.4)',
     borderRadius: '6px',
     padding: '10px 12px',
     display: 'flex',
     flexDirection: 'column' as const,
     gap: '8px',
   },
-  errorText: { color: '#fb7185', fontSize: '9px', letterSpacing: '1px' },
+  errorText: { color: '#ef4444', fontSize: '11px', letterSpacing: '0.3px' },
   letsbonkLink: {
-    color: '#e879f9',
-    fontSize: '8px',
-    letterSpacing: '1px',
+    color: '#f97316',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     textDecoration: 'none',
-    borderBottom: '1px solid #7c3aed',
+    borderBottom: '1px solid rgba(249,115,22,0.4)',
     alignSelf: 'flex-start' as const,
     paddingBottom: '1px',
   },
   successBox: {
-    background: 'rgba(88, 28, 135, 0.2)',
-    border: '1px solid #7c3aed',
+    background: 'rgba(34,197,94,0.08)',
+    border: '1px solid rgba(34,197,94,0.3)',
     borderRadius: '6px',
     padding: '10px 12px',
     display: 'flex',
@@ -847,23 +836,24 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
   },
   successText: {
-    color: '#e879f9',
-    fontSize: '9px',
-    letterSpacing: '1px',
-    textShadow: '0 0 8px rgba(232, 121, 249, 0.5)',
+    color: '#22c55e',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    fontWeight: '600',
   },
   successSummary: {
-    color: '#a855f7',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#888888',
+    fontSize: '10px',
+    letterSpacing: '0.3px',
     wordBreak: 'break-all' as const,
   },
   txLink: {
-    color: '#a855f7',
-    fontSize: '8px',
+    color: '#f97316',
+    fontSize: '11px',
     textDecoration: 'none',
-    letterSpacing: '1px',
-    borderBottom: '1px solid #7c3aed',
+    letterSpacing: '0.3px',
+    borderBottom: '1px solid rgba(249,115,22,0.4)',
+    whiteSpace: 'nowrap' as const,
   },
   // ── Slippage selector ──────────────────────────────────────────────────────
   slippageSection: {
@@ -871,35 +861,35 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: '6px',
   },
-  slippageLabel: { color: '#6d28d9', fontSize: '6px', letterSpacing: '1.5px' },
+  slippageLabel: { color: '#555555', fontSize: '10px', letterSpacing: '0.5px' },
   slippagePills: { display: 'flex', gap: '6px', flexWrap: 'wrap' as const },
   slippagePill: {
     fontFamily: fontStack,
-    fontSize: '6px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     padding: '5px 8px',
-    borderRadius: '20px',
+    borderRadius: '4px',
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.12s ease',
     whiteSpace: 'nowrap' as const,
   },
   slippagePillActive: {
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
-    color: '#fff',
-    boxShadow: '0 0 10px rgba(219, 39, 119, 0.45)',
+    background: '#f97316',
+    color: '#000000',
+    fontWeight: '600',
   },
   slippagePillInactive: {
-    background: 'rgba(88, 28, 135, 0.15)',
-    color: '#a855f7',
-    border: '1px solid #3b0764',
+    background: '#1a1a1a',
+    color: '#888888',
+    border: '1px solid #222222',
   },
   customInputRow: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    background: 'rgba(88, 28, 135, 0.12)',
-    border: '1px solid #6d28d9',
+    background: '#0f0f0f',
+    border: '1px solid #333333',
     borderRadius: '6px',
     padding: '6px 10px',
     marginTop: '2px',
@@ -908,30 +898,31 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'transparent',
     border: 'none',
     outline: 'none',
-    color: '#f0abfc',
+    color: '#ffffff',
     fontFamily: fontStack,
-    fontSize: '10px',
+    fontSize: '12px',
     width: '60px',
-    caretColor: '#e879f9',
+    caretColor: '#f97316',
   },
-  customInputSuffix: { color: '#7c3aed', fontSize: '8px', letterSpacing: '1px' },
+  customInputSuffix: { color: '#555555', fontSize: '11px', letterSpacing: '0.3px' },
   // ── Warnings ───────────────────────────────────────────────────────────────
   warnBox: {
-    background: 'rgba(190, 18, 60, 0.1)',
-    border: '1px solid #be185d',
+    background: 'rgba(245,158,11,0.08)',
+    border: '1px solid rgba(245,158,11,0.3)',
     borderRadius: '6px',
     padding: '9px 12px',
     display: 'flex',
     flexDirection: 'column' as const,
     gap: '5px',
   },
-  warnText: { color: '#f472b6', fontSize: '7px', letterSpacing: '1px' },
-  warnSub: { color: '#9f1239', fontSize: '6px', letterSpacing: '0.5px' },
+  warnText: { color: '#f59e0b', fontSize: '11px', letterSpacing: '0.3px' },
+  warnSub: { color: '#888888', fontSize: '10px', letterSpacing: '0.3px' },
   // ── Swap button ────────────────────────────────────────────────────────────
   swapBtn: {
     fontFamily: fontStack,
-    fontSize: '11px',
-    letterSpacing: '2px',
+    fontSize: '13px',
+    fontWeight: '700',
+    letterSpacing: '1px',
     padding: '14px',
     borderRadius: '8px',
     border: 'none',
@@ -940,45 +931,42 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'all 0.15s ease',
   },
   swapBtnConnect: {
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
-    color: '#fff',
-    boxShadow: '0 0 20px rgba(219, 39, 119, 0.4)',
+    background: '#f97316',
+    color: '#000000',
     cursor: 'pointer',
   },
   swapBtnActive: {
-    background: 'linear-gradient(135deg, #7c3aed, #db2777)',
-    color: '#fff',
-    boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)',
+    background: '#f97316',
+    color: '#000000',
     cursor: 'pointer',
   },
   swapBtnSell: {
-    background: 'linear-gradient(135deg, #db2777, #9d174d)',
-    color: '#fff',
-    boxShadow: '0 0 20px rgba(219, 39, 119, 0.45)',
+    background: '#ef4444',
+    color: '#ffffff',
     cursor: 'pointer',
   },
   swapBtnDisabled: {
-    background: 'rgba(88, 28, 135, 0.2)',
-    color: '#4c1d95',
+    background: '#1a1a1a',
+    color: '#333333',
     cursor: 'not-allowed',
-    border: '1px solid #3b0764',
+    border: '1px solid #222222',
   },
   swapBtnSwapping: {
-    background: 'linear-gradient(135deg, #5b21b6, #9d174d)',
-    color: 'rgba(255,255,255,0.6)',
+    background: '#1a1a1a',
+    color: 'rgba(255,255,255,0.4)',
     cursor: 'not-allowed',
   },
   // ── Footer ─────────────────────────────────────────────────────────────────
   footer: {
-    color: '#4c1d95',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#444444',
+    fontSize: '10px',
+    letterSpacing: '0.3px',
     textAlign: 'center',
   },
   // ── Progress bar ───────────────────────────────────────────────────────────
   progressBox: {
-    background: 'rgba(88, 28, 135, 0.12)',
-    border: '1px solid #4c1d95',
+    background: '#0f0f0f',
+    border: '1px solid #1a1a1a',
     borderRadius: '8px',
     padding: '10px 14px',
     display: 'flex',
@@ -990,31 +978,29 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  progressLabel: { color: '#c084fc', fontSize: '8px', letterSpacing: '1px' },
+  progressLabel: { color: '#888888', fontSize: '11px', letterSpacing: '0.5px' },
   progressPct: {
-    color: '#e879f9',
-    fontSize: '8px',
-    letterSpacing: '1px',
-    textShadow: '0 0 6px rgba(232, 121, 249, 0.5)',
+    color: '#f97316',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
+    fontWeight: '600',
   },
   progressTrack: {
     height: '6px',
-    background: 'rgba(88, 28, 135, 0.3)',
+    background: '#1a1a1a',
     borderRadius: '3px',
     overflow: 'hidden',
-    border: '1px solid #3b0764',
   },
   progressFill: {
     height: '100%',
     borderRadius: '3px',
     transition: 'width 0.3s ease',
-    boxShadow: '0 0 6px rgba(168, 85, 247, 0.5)',
   },
   progressStat: {
     display: 'flex',
     justifyContent: 'space-between',
-    color: '#6d28d9',
-    fontSize: '7px',
-    letterSpacing: '1px',
+    color: '#555555',
+    fontSize: '10px',
+    letterSpacing: '0.3px',
   },
 };

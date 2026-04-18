@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0d0015;
-  --foreground: #c084fc;
+  --background: #0a0a0a;
+  --foreground: #e5e5e5;
 }
 
 @theme inline {
@@ -14,9 +14,9 @@
 }
 
 body {
-  background: #0d0015;
-  color: #c084fc;
-  font-family: Arial, Helvetica, sans-serif;
+  background: #0a0a0a;
+  color: #e5e5e5;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 @keyframes pulse {
@@ -29,52 +29,11 @@ body {
   100% { transform: translateX(-50%); }
 }
 
-@keyframes glow-pulse {
-  0%, 100% { text-shadow: 0 0 20px rgba(232, 121, 249, 0.4), 0 0 60px rgba(168, 85, 247, 0.15); }
-  50%       { text-shadow: 0 0 40px rgba(232, 121, 249, 0.7), 0 0 100px rgba(168, 85, 247, 0.3); }
-}
-
-/* ── Hero title gradient sweep: purple → green → teal → purple ── */
-@keyframes hero-text-gradient {
-  0%   { background-position: 0% center;    }
-  100% { background-position: 200% center;  }
-}
-
 @layer utilities {
   .hero-gradient-text {
-    background: linear-gradient(90deg,
-      #7c3aed,
-      #00ff80,
-      #00f5ff,
-      #db2777,
-      #7c3aed
-    ) !important;
-    background-size: 200% auto !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    color: transparent !important;
-    animation: hero-text-gradient 8s linear infinite;
-  }
-}
-
-@keyframes pink-neon-pulse {
-  0%, 100% {
-    text-shadow:
-      0 0 10px rgba(192, 38, 211, 0.4),
-      0 0 30px rgba(192, 38, 211, 0.2);
-  }
-  50% {
-    text-shadow:
-      0 0 15px rgba(192, 38, 211, 0.6),
-      0 0 40px rgba(192, 38, 211, 0.3);
-  }
-}
-
-@layer utilities {
-  .hero-pink-neon {
-    color: #c026d3 !important;
-    animation: pink-neon-pulse 6s ease-in-out infinite;
+    color: #f97316 !important;
+    -webkit-text-fill-color: #f97316 !important;
+    background: none !important;
   }
 }
 
@@ -85,16 +44,11 @@ body {
 
 @layer utilities {
   .typewriter-cursor {
-    color: #7c3aed;
+    color: #f97316;
     font-family: var(--font-press-start), "Courier New", monospace;
     font-size: 9px;
     animation: cursor-blink 0.65s step-end infinite;
     margin-left: 2px;
     user-select: none;
   }
-}
-
-@keyframes border-glow {
-  0%, 100% { box-shadow: 0 0 12px rgba(124, 58, 237, 0.2), inset 0 0 20px rgba(88, 28, 135, 0.05); }
-  50%       { box-shadow: 0 0 24px rgba(219, 39, 119, 0.3), inset 0 0 30px rgba(88, 28, 135, 0.08); }
 }
