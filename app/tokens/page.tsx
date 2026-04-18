@@ -5,48 +5,48 @@ import Link from 'next/link';
 
 const font = 'var(--font-press-start), "Courier New", monospace';
 const PLATFORM_ID = '32SyS4SyyNK0AERNMk9vLjSdrJ9mUXrNkD5wUMASqHw4';
+const LIST_URL = 'https://launch-mint-v1.raydium.io/get/list';
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
 interface LaunchToken {
+  mint: string;              // token mint address
   poolId?: string;
-  mintA: string;
   name: string;
   symbol: string;
-  uri?: string;
-  status?: number;           // 0=trading 1=migrating 2=graduated
-  createTime?: number;       // unix seconds or ms — handle both
-  totalSellA?: string;
-  totalFundRaisingB?: string;
-  currentBaseAmount?: string;
-  currentQuoteAmount?: string;
-  price?: string | number;
-  marketCap?: string | number;
+  imgUrl?: string;           // direct image URL (no metadata fetch needed)
+  metadataUrl?: string;
+  createAt?: number;         // ms timestamp
+  marketCap?: number;        // SOL float
+  finishingRate?: number;    // 0-100 progress toward graduation
+  migrateType?: string;
+  platformInfo?: { pubKey: string; name?: string };
+  decimals?: number;
+  supply?: number;
 }
 
 async function fetchPlatformTokens(): Promise<LaunchToken[]> {
+  // Fetch recent tokens (all platforms) then filter client-side by our platform ID
   const res = await fetch(
-    `https://api-v3.raydium.io/launchpad/token/list` +
-    `?platformId=${PLATFORM_ID}&page=1&pageSize=20`,
+    `${LIST_URL}?sort=new&size=50&mintType=default&includeNsfw=false`,
     { cache: 'no-store' },
   );
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
   const json = await res.json() as {
     success: boolean;
-    data?: { count?: number; data?: LaunchToken[]; rows?: LaunchToken[] } | LaunchToken[];
+    data?: { rows?: LaunchToken[] };
   };
   if (!json.success) throw new Error('Raydium API returned success: false');
-  if (Array.isArray(json.data)) return json.data;
-  const nested = json.data as { data?: LaunchToken[]; rows?: LaunchToken[] } | undefined;
-  return nested?.data ?? nested?.rows ?? [];
+  const rows = json.data?.rows ?? [];
+  // Filter to BASEDFARMS platform only
+  return rows.filter((t) => t.platformInfo?.pubKey === PLATFORM_ID);
 }
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
 function timeAgo(ts: number): string {
-  const now = Date.now();
-  const ms = ts > 1e12 ? ts : ts * 1000;
-  const diff = now - ms;
+  // createAt is already in ms
+  const diff = Date.now() - ts;
   if (diff < 60_000)       return 'just now';
   if (diff < 3_600_000)    return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000)   return `${Math.floor(diff / 3_600_000)}h ago`;
@@ -54,27 +54,23 @@ function timeAgo(ts: number): string {
 }
 
 function curveProgress(t: LaunchToken): number {
-  try {
-    const raised = Number(t.currentQuoteAmount ?? 0);
-    const target = Number(t.totalFundRaisingB ?? 0);
-    if (target > 0 && raised >= 0) return Math.min(100, Math.round((raised / target) * 100));
-  } catch { /* */ }
+  // finishingRate is already 0-100
+  if (typeof t.finishingRate === 'number') return Math.min(100, Math.round(t.finishingRate));
   return 0;
 }
 
 function fmtMcap(t: LaunchToken): string {
   if (!t.marketCap) return '—';
-  const n = Number(t.marketCap);
-  if (!n) return '—';
+  const n = t.marketCap;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M SOL`;
   if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K SOL`;
   return `${n.toFixed(2)} SOL`;
 }
 
-function statusInfo(status?: number) {
-  if (status === 2) return { text: '✓ GRAD',    color: '#22c55e' };
-  if (status === 1) return { text: '⟳ MIGRATE', color: '#f59e0b' };
-  return                    { text: '● LIVE',    color: '#db2777' };
+function statusInfo(t: LaunchToken) {
+  // finishingRate 100 = graduated, migrateType is a clue too
+  if ((t.finishingRate ?? 0) >= 100) return { text: '✓ GRAD',    color: '#22c55e' };
+  return                                     { text: '● LIVE',    color: '#db2777' };
 }
 
 function basedTier(name: string, symbol: string) {
@@ -92,36 +88,16 @@ function symbolHue(symbol: string) {
 
 /* ── Token Image ─────────────────────────────────────────────────────────── */
 
-function TokenImage({ uri, symbol, size }: { uri?: string; symbol: string; size: number }) {
-  const [src, setSrc] = useState<string | null>(null);
+function TokenImage({ imgUrl, symbol, size }: { imgUrl?: string; symbol: string; size: number }) {
   const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!uri) return;
-    // Direct image extension → use as-is
-    if (/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(uri)) {
-      setSrc(uri);
-      return;
-    }
-    // Metadata JSON → fetch image field
-    let cancelled = false;
-    fetch(uri)
-      .then((r) => r.json())
-      .then((meta: { image?: string }) => {
-        if (!cancelled && meta.image) setSrc(meta.image);
-      })
-      .catch(() => { /* fallback avatar */ });
-    return () => { cancelled = true; };
-  }, [uri]);
-
   const hue = symbolHue(symbol);
   const letter = symbol.charAt(0).toUpperCase();
 
-  if (src && !failed) {
+  if (imgUrl && !failed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={src}
+        src={imgUrl}
         alt={symbol}
         style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
         onError={() => setFailed(true)}
@@ -148,17 +124,15 @@ function TokenImage({ uri, symbol, size }: { uri?: string; symbol: string; size:
 
 function TokenCard({ token }: { token: LaunchToken }) {
   const progress = curveProgress(token);
-  const sl = statusInfo(token.status);
+  const sl = statusInfo(token);
   const tier = basedTier(token.name, token.symbol);
-  const barColor = progress >= 90
-    ? '#22c55e'
-    : `linear-gradient(90deg, #7c3aed, #db2777)`;
+  const barColor = progress >= 90 ? '#22c55e' : 'linear-gradient(90deg, #7c3aed, #db2777)';
 
   return (
     <div style={s.card}>
       {/* Header row: logo + name/symbol + status */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-        <TokenImage uri={token.uri} symbol={token.symbol} size={40} />
+        <TokenImage imgUrl={token.imgUrl} symbol={token.symbol} size={40} />
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {/* Symbol + tier badge */}
@@ -198,12 +172,12 @@ function TokenCard({ token }: { token: LaunchToken }) {
         </div>
         <div style={{ ...s.statCol, alignItems: 'flex-end' as const }}>
           <span style={s.statLabel}>LAUNCHED</span>
-          <span style={s.statVal}>{token.createTime ? timeAgo(token.createTime) : '—'}</span>
+          <span style={s.statVal}>{token.createAt ? timeAgo(token.createAt) : '—'}</span>
         </div>
       </div>
 
       {/* TRADE button */}
-      <Link href={`/farm/${token.mintA}`} style={s.tradeBtn}>
+      <Link href={`/farm/${token.mint}`} style={s.tradeBtn}>
         ⇄ TRADE
       </Link>
     </div>
@@ -314,7 +288,7 @@ export default function TokensPage() {
         {showGrid && (
           <div style={s.grid}>
             {tokens.map((t) => (
-              <TokenCard key={t.poolId ?? t.mintA} token={t} />
+              <TokenCard key={t.poolId ?? t.mint} token={t} />
             ))}
           </div>
         )}
