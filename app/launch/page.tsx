@@ -701,7 +701,7 @@ function Step3({
     if (!form.vestingEnabled) return 0;
     const vestingTokens = (form.supply * form.vestingPercent) / 100;
     const curveTokens = (form.supply * form.curvePercent) / 100;
-    const rawMin = (vestingTokens / (curveTokens || 1)) * form.targetSol * 0.1;
+    const rawMin = (vestingTokens / (curveTokens || 1)) * form.targetSol * 0.05;
     return Math.max(0.01, Math.ceil(rawMin * 100) / 100);
   })();
 
@@ -782,7 +782,7 @@ function Step3({
                 // Enabling vesting — auto-enable initial buy with minimum amount
                 const vestTokens = (f.supply * f.vestingPercent) / 100;
                 const curveTokens = (f.supply * f.curvePercent) / 100;
-                const rawMin = (vestTokens / (curveTokens || 1)) * f.targetSol * 0.1;
+                const rawMin = (vestTokens / (curveTokens || 1)) * f.targetSol * 0.05;
                 const minBuy = Math.max(0.01, Math.ceil(rawMin * 100) / 100);
                 return {
                   ...f,
@@ -1688,6 +1688,9 @@ export default function LaunchPage() {
   const walletContext = useWallet();
   const { publicKey, signAllTransactions, signTransaction } = walletContext;
 
+  // Guards against React StrictMode double-invoke and accidental double-clicks
+  const launchInProgress = useRef(false);
+
   const canNext = (() => {
     if (step === 1)
       return (
@@ -1700,10 +1703,39 @@ export default function LaunchPage() {
 
   const handleLaunch = useCallback(async () => {
     if (!publicKey || !signAllTransactions) return;
+    if (launchInProgress.current) {
+      console.warn('[Launch] Already in progress — ignoring duplicate call');
+      return;
+    }
+    launchInProgress.current = true;
     setError(null);
 
     try {
       setStatus('uploading');
+
+      // ── Wallet balance pre-check ─────────────────────────────────────────
+      {
+        const { Connection: Conn } = await import('@solana/web3.js');
+        const conn = new Conn(LAUNCH_RPC, 'confirmed');
+        const balanceLamports = await conn.getBalance(publicKey);
+        const walletSol = balanceLamports / LAMPORTS_PER_SOL;
+        const initialBuySol = form.initialBuyEnabled
+          ? Math.max(0.001, form.initialBuySol)
+          : 0.001;
+        const totalNeeded = initialBuySol + 0.1 + 0.02; // initial buy + launch fee + network
+        if (walletSol < totalNeeded) {
+          throw new Error(
+            `Insufficient SOL. Need ${totalNeeded.toFixed(2)} SOL, have ${walletSol.toFixed(2)} SOL. ` +
+            (form.vestingEnabled
+              ? 'Airdrop more SOL or reduce the vesting percentage.'
+              : 'Airdrop more SOL to continue.'),
+          );
+        }
+        console.log('[Launch] Wallet balance check passed:', {
+          walletSol: walletSol.toFixed(4),
+          totalNeeded: totalNeeded.toFixed(4),
+        });
+      }
       const metadataUri = await uploadMetadata({
         name: form.tokenName,
         symbol: form.tokenSymbol,
@@ -1744,7 +1776,7 @@ export default function LaunchPage() {
           const vestingTokens = form.vestingEnabled ? (form.supply * form.vestingPercent) / 100 : 0;
           const curveTokens = (form.supply * form.curvePercent) / 100;
           const minForVesting = form.vestingEnabled
-            ? Math.max(0.01, Math.ceil((vestingTokens / (curveTokens || 1)) * form.targetSol * 0.1 * 100) / 100)
+            ? Math.max(0.01, Math.ceil((vestingTokens / (curveTokens || 1)) * form.targetSol * 0.05 * 100) / 100)
             : 0.001;
           return Math.round(Math.max(minForVesting, form.initialBuySol) * LAMPORTS_PER_SOL);
         })(),
@@ -1840,6 +1872,8 @@ export default function LaunchPage() {
       setError(msg);
       setStatus('idle');
       console.error('[Launch] error:', err);
+    } finally {
+      launchInProgress.current = false;
     }
   }, [form, publicKey, signAllTransactions]);
 
