@@ -254,11 +254,9 @@ export async function createToken(
     throw new Error('At least 20% of supply must be reserved for the Raydium AMM pool');
   }
 
-  // totalLockedAmount = tokens reserved for vesting (0 if disabled)
-  const vestPercent = params.vestingEnabled ? Math.min(30, Math.max(0, params.vestingPercent)) : 0;
-  const totalLockedAmount = supplyRaw
-    .mul(new BN(Math.round(vestPercent * 100)))
-    .div(new BN(10000));
+  // totalLockedAmount = 0 — vesting is handled by Streamflow (off-chain lock)
+  // Raydium-native vesting (totalLockedAmount > 0) is no longer used.
+  const totalLockedAmount = new BN(0);
   const totalFundRaisingB = new BN(Math.round(params.targetSol * LAMPORTS_PER_SOL));
 
   console.log('[Launch] supply:', supplyRaw.toString());
@@ -294,8 +292,8 @@ export async function createToken(
     totalSellA,
     totalFundRaisingB,
     totalLockedAmount,
-    cliffPeriod: params.vestingEnabled ? new BN(params.cliffSeconds) : new BN(0),
-    unlockPeriod: params.vestingEnabled ? new BN(params.unlockSeconds) : new BN(0),
+    cliffPeriod: new BN(0),
+    unlockPeriod: new BN(0),
     buyAmount,
     minMintAAmount,
     token2022: params.token2022,

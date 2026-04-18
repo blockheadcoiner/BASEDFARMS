@@ -7,7 +7,6 @@ import { LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import {
   createToken,
-  createVestingForPool,
   uploadMetadata,
   calcBasedScore,
   CpmmCreatorFeeOn,
@@ -15,6 +14,7 @@ import {
   type LaunchParams,
   type ScoreTouchedKey,
 } from '@/services/launch';
+import { createVestingStream } from '@/services/streamflow';
 import { useWalletModal } from '@/components/WalletProvider';
 
 const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
@@ -760,13 +760,30 @@ function Step3({
 
       {/* Vesting */}
       <div style={s.toggleSection}>
-        <Toggle
-          checked={form.vestingEnabled}
-          onChange={(v) => { setForm((f) => ({ ...f, vestingEnabled: v })); onTouch('vestingEnabled'); }}
-          label="VESTING"
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
+          <Toggle
+            checked={form.vestingEnabled}
+            onChange={(v) => { setForm((f) => ({ ...f, vestingEnabled: v })); onTouch('vestingEnabled'); }}
+            label="VESTING"
+          />
+          {form.vestingEnabled && (
+            <span style={{
+              fontFamily: pressStart,
+              fontSize: '7px',
+              color: '#00c8a0',
+              background: 'rgba(0,200,160,0.1)',
+              border: '1px solid rgba(0,200,160,0.3)',
+              padding: '2px 7px',
+              borderRadius: '4px',
+              letterSpacing: '0.05em',
+            }}>
+              POWERED BY STREAMFLOW
+            </span>
+          )}
+        </div>
         {form.vestingEnabled && (
           <div style={toggleContentStyle}>
+            <Hint>Audited vesting by FYEO + Opcodes. Recipients claim tokens directly from the Streamflow contract.</Hint>
             <div style={s.field}>
               <Label>% OF SUPPLY TO VEST</Label>
               <div style={s.sliderRow}>
@@ -1226,6 +1243,8 @@ function Step4({
   status,
   error,
   txIds,
+  vestingStreamId,
+  vestingDashboardUrl,
   onLaunch,
   isMobile,
 }: {
@@ -1233,6 +1252,8 @@ function Step4({
   status: 'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'vesting' | 'done';
   error: string | null;
   txIds: string[];
+  vestingStreamId: string | null;
+  vestingDashboardUrl: string | null;
   onLaunch: () => void;
   isMobile: boolean;
 }) {
@@ -1391,6 +1412,67 @@ function Step4({
               </a>
             ))}
           </div>
+
+          {/* Streamflow vesting stream info */}
+          {vestingStreamId && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px 16px',
+              background: 'rgba(0,200,160,0.08)',
+              border: '1px solid rgba(0,200,160,0.3)',
+              borderRadius: '6px',
+              display: 'flex',
+              flexDirection: 'column' as const,
+              gap: '8px',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap' as const,
+                gap: '6px',
+              }}>
+                <span style={{ fontFamily: pressStart, fontSize: '9px', color: '#00c8a0', letterSpacing: '0.05em' }}>
+                  VESTING STREAM
+                </span>
+                <span style={{
+                  fontFamily: pressStart,
+                  fontSize: '7px',
+                  color: '#888',
+                  background: 'rgba(255,255,255,0.05)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}>
+                  AUDITED BY FYEO + OPCODES
+                </span>
+              </div>
+              <div style={{ fontFamily: font, fontSize: '11px', color: '#aaa', wordBreak: 'break-all' as const }}>
+                {vestingStreamId.slice(0, 20)}...{vestingStreamId.slice(-8)}
+              </div>
+              {vestingDashboardUrl && (
+                <a
+                  href={vestingDashboardUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-block',
+                    fontFamily: pressStart,
+                    fontSize: '8px',
+                    color: '#00c8a0',
+                    textDecoration: 'none',
+                    padding: '6px 10px',
+                    border: '1px solid #00c8a0',
+                    borderRadius: '4px',
+                    letterSpacing: '0.05em',
+                    alignSelf: 'flex-start' as const,
+                  }}
+                >
+                  VIEW ON STREAMFLOW ↗
+                </a>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1543,6 +1625,8 @@ export default function LaunchPage() {
   >('idle');
   const [error, setError] = useState<string | null>(null);
   const [txIds, setTxIds] = useState<string[]>([]);
+  const [vestingStreamId, setVestingStreamId] = useState<string | null>(null);
+  const [vestingDashboardUrl, setVestingDashboardUrl] = useState<string | null>(null);
   const [scoreExpanded, setScoreExpanded] = useState(false);
 
   const markTouched = useCallback((key: ScoreTouchedKey) => {
@@ -1554,7 +1638,8 @@ export default function LaunchPage() {
     });
   }, []);
 
-  const { publicKey, signAllTransactions, signTransaction } = useWallet();
+  const walletContext = useWallet();
+  const { publicKey, signAllTransactions, signTransaction } = walletContext;
 
   const canNext = (() => {
     if (step === 1)
@@ -1620,37 +1705,41 @@ export default function LaunchPage() {
       setStatus('sending');
       const result = await createToken(params, metadataUri, publicKey, typedSignAll);
 
-      // ── Vesting: assign locked tokens to beneficiary ────────────────────
+      // ── Vesting: lock tokens via Streamflow audited vesting contract ────
       if (form.vestingEnabled && signTransaction) {
         setStatus('vesting');
 
         const vestPercent = Math.min(30, Math.max(0, form.vestingPercent));
         const supplyRaw = form.supply * 10 ** 6;
-        const shareAmount = new BN(
+        const totalAmount = new BN(
           Math.round(supplyRaw * vestPercent / 100).toString()
         );
 
-        // Validate beneficiary address — fall back to creator wallet
-        let beneficiary = publicKey;
+        // Resolve beneficiary address — fall back to creator wallet
+        let recipient = publicKey.toBase58();
         if (form.vestingBeneficiary.trim()) {
           try {
             const { PublicKey: PK } = await import('@solana/web3.js');
-            beneficiary = new PK(form.vestingBeneficiary.trim());
+            new PK(form.vestingBeneficiary.trim()); // validate
+            recipient = form.vestingBeneficiary.trim();
           } catch {
             // invalid address — use creator wallet silently
           }
         }
 
-        const { PublicKey: PK2 } = await import('@solana/web3.js');
-        const vestingTxId = await createVestingForPool(
-          new PK2(result.poolId),
-          beneficiary,
-          shareAmount,
-          publicKey,
-          signTransaction as (tx: Transaction) => Promise<Transaction>,
-        );
+        const vestResult = await createVestingStream({
+          wallet: walletContext,
+          recipient,
+          mint: result.mintAddress,
+          totalAmount,
+          cliffDays: form.cliffDays,
+          unlockDays: form.unlockDays,
+          tokenName: form.tokenName,
+        });
 
-        setTxIds([...result.txIds, vestingTxId]);
+        setVestingStreamId(vestResult.streamId);
+        setVestingDashboardUrl(vestResult.dashboardUrl);
+        setTxIds([...result.txIds, vestResult.txId]);
       } else {
         setTxIds(result.txIds);
       }
@@ -1752,6 +1841,8 @@ export default function LaunchPage() {
               status={status}
               error={error}
               txIds={txIds}
+              vestingStreamId={vestingStreamId}
+              vestingDashboardUrl={vestingDashboardUrl}
               onLaunch={handleLaunch}
               isMobile={isMobile}
             />
@@ -1771,6 +1862,8 @@ export default function LaunchPage() {
                 status={status}
                 error={error}
                 txIds={txIds}
+                vestingStreamId={vestingStreamId}
+                vestingDashboardUrl={vestingDashboardUrl}
                 onLaunch={handleLaunch}
                 isMobile={false}
               />
