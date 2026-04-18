@@ -33,7 +33,7 @@ export default function FarmPage({ params }: Props) {
         <div style={styles.logo}>BASED<span style={styles.logoAccent}>FARMS</span></div>
         <div style={styles.headerRight}>
           <div style={styles.mintPill}>{shortMint}</div>
-          <div style={styles.basedBadge}>◈ BASEDFARMS</div>
+          <Link href="/tokens" style={styles.tokensLink}>TOKENS</Link>
           <Link href="/launch" style={styles.launchBtn}>+ LAUNCH</Link>
         </div>
       </header>
@@ -251,6 +251,19 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '1px',
     whiteSpace: 'nowrap' as const,
     textShadow: '0 0 8px rgba(244,114,182,0.4)',
+  },
+  tokensLink: {
+    fontFamily: font,
+    fontSize: '7px',
+    letterSpacing: '1px',
+    padding: '5px 10px',
+    background: 'transparent',
+    border: '1px solid #3b0764',
+    borderRadius: '20px',
+    color: '#a855f7',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap' as const,
+    display: 'inline-block',
   },
   launchBtn: {
     fontFamily: font,

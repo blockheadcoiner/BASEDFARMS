@@ -90,6 +90,9 @@ export default function HomePage() {
         </div>
         <div style={styles.navActions}>
           <ConnectWalletButton />
+          <Link href="/tokens" style={styles.tokensBtn}>
+            TOKENS
+          </Link>
           <Link href="/launch" style={styles.launchBtn}>
             + LAUNCH TOKEN
           </Link>
@@ -303,6 +306,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   navAccent: { color: '#e879f9' },
   navDot: { color: '#6d28d9', fontSize: '10px' },
+  tokensBtn: {
+    fontFamily: font,
+    fontSize: '8px',
+    letterSpacing: '1px',
+    padding: '10px 12px',
+    background: 'transparent',
+    border: '1px solid #3b0764',
+    borderRadius: '6px',
+    color: '#a855f7',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    display: 'inline-block',
+  },
   launchBtn: {
     fontFamily: font,
     fontSize: '8px',
