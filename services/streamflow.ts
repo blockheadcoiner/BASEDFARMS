@@ -18,9 +18,11 @@ import { IS_DEVNET, LAUNCH_RPC } from './launch';
 
 const STREAMFLOW_CLUSTER = IS_DEVNET ? ICluster.Devnet : ICluster.Mainnet;
 
-const DASHBOARD_BASE = IS_DEVNET
-  ? 'https://app.streamflow.finance/streams/solana/devnet'
-  : 'https://app.streamflow.finance/streams/solana/mainnet';
+// Note: Streamflow uses /stream/ (singular) with ?cluster=devnet for devnet links
+const buildDashboardUrl = (streamId: string) =>
+  IS_DEVNET
+    ? `https://app.streamflow.finance/stream/${streamId}?cluster=devnet`
+    : `https://app.streamflow.finance/stream/${streamId}`;
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -239,6 +241,6 @@ export async function createVestingStream(
   return {
     streamId: metadataId,
     txId,
-    dashboardUrl: `${DASHBOARD_BASE}/${metadataId}`,
+    dashboardUrl: buildDashboardUrl(metadataId),
   };
 }
