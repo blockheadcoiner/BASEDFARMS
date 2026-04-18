@@ -30,6 +30,7 @@ import {
   LOCK_CPMM_PROGRAM,
   LOCK_CPMM_AUTH,
   getPdaPlatformId,
+  getCpmmPdaAmmConfigId,
 } from '@raydium-io/raydium-sdk-v2';
 import {
   Connection,
@@ -136,10 +137,21 @@ const LP_CREATOR_SCALE  = new BN(100_000);  // 10%
 const LP_BURN_SCALE     = new BN(800_000);  // 80%
 
 /**
- * CPMM fee tier for migrated pools (0.25% trading fee tier — lowest available).
- * Source: https://api-v3.raydium.io/main/cpmm-config → index 0, tradeFeeRate 2500
+ * CPMM fee tier for migrated pools (0.25% trading fee, index 0).
+ *
+ * Mainnet: D4FPEruKEHrG5TenZ2mpDGEfu1iUvTiqBxvpU8HLBvC2
+ *   Source: https://api-v3.raydium.io/main/cpmm-config → index 0, tradeFeeRate 2500
+ *
+ * Devnet: 5MxLgy9oPdTC3YgkiePHqr3EoCRD9uLVYRQS2ANAs7wy
+ *   Derived from DEVNET_PROGRAM_ID.CREATE_CPMM_POOL_PROGRAM (DRaycpLY…) at index 0.
+ *   Owner verified on-chain: DRaycpLY18LhpbydsBWbVJtxpNv9oXPgjRSfpF2bWpYb
+ *   tradeFeeRate: 2500 (0.25%), disabled: false
+ *
+ * Using getCpmmPdaAmmConfigId ensures the correct PDA for each network's CPMM program.
  */
-const CPMM_CONFIG_ID = new PublicKey('D4FPEruKEHrG5TenZ2mpDGEfu1iUvTiqBxvpU8HLBvC2');
+const CPMM_CONFIG_ID = IS_DEVNET
+  ? getCpmmPdaAmmConfigId(DEVNET_PROGRAM_ID.CREATE_CPMM_POOL_PROGRAM, 0).publicKey
+  : new PublicKey('D4FPEruKEHrG5TenZ2mpDGEfu1iUvTiqBxvpU8HLBvC2');
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
