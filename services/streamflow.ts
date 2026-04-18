@@ -108,29 +108,62 @@ export async function createVestingStream(
   const adjustedCliffAmount = remainder.gtn(0) ? remainder : new BN(0);
 
   const client = getClient();
-
-  // ── Pre-flight: verify creator actually holds enough tokens ───────────────
   const connection = new Connection(LAUNCH_RPC, 'confirmed');
   const mintPubkey = new PublicKey(mint);
+
+  // ── DETAILED DEBUG BLOCK ──────────────────────────────────────────────────
+  console.log('===== STREAMFLOW VESTING DEBUG =====');
+  console.log('Mint:', mint.toString());
+  console.log('Recipient:', recipient.toString());
+  console.log('creatorPublicKey param:', creatorPublicKey);
+  try {
+    console.log('wallet.publicKey:', wallet.publicKey?.toString() ?? 'undefined');
+  } catch { console.log('wallet.publicKey: error reading'); }
+
+  // Check ATA from creatorPublicKey param (what our pre-flight uses)
   const creatorPubkey = new PublicKey(creatorPublicKey);
   const creatorAta = await getAssociatedTokenAddress(mintPubkey, creatorPubkey);
+  console.log('Creator ATA (from creatorPublicKey):', creatorAta.toString());
+  try {
+    const bal1 = await connection.getTokenAccountBalance(creatorAta);
+    console.log('Creator ATA balance raw:', bal1.value.amount);
+    console.log('Creator ATA balance ui:', bal1.value.uiAmount);
+    console.log('Creator ATA decimals:', bal1.value.decimals);
+  } catch (e) {
+    console.log('Creator ATA does not exist or error:', (e as Error).message);
+  }
 
+  // Check ATA from wallet.publicKey (what Streamflow SDK will use as sender)
+  if (wallet.publicKey) {
+    const senderAta = await getAssociatedTokenAddress(mintPubkey, wallet.publicKey);
+    console.log('Sender ATA (from wallet.publicKey):', senderAta.toString());
+    try {
+      const bal2 = await connection.getTokenAccountBalance(senderAta);
+      console.log('Sender ATA balance raw:', bal2.value.amount);
+      console.log('Sender ATA balance ui:', bal2.value.uiAmount);
+      console.log('Sender decimals:', bal2.value.decimals);
+    } catch (e) {
+      console.log('Sender ATA does not exist or has no balance:', (e as Error).message);
+    }
+  } else {
+    console.log('wallet.publicKey is null/undefined — Streamflow cannot determine sender');
+  }
+
+  const totalPeriods = vestDuration;
+  console.log('Total amount to vest:', totalAmount.toString());
+  console.log('Amount per period:', amountPerPeriod.toString());
+  console.log('Total periods:', totalPeriods);
+  console.log('adjustedCliffAmount:', adjustedCliffAmount.toString());
+  console.log('Final amount vested:', totalAmount.toString());
+  console.log('Calling Streamflow create()...');
+  // ── END DEBUG BLOCK ───────────────────────────────────────────────────────
+
+  // Pre-flight guard: throw early with actionable message if balance is short
   let creatorBalance = new BN(0);
   try {
     const balanceResp = await connection.getTokenAccountBalance(creatorAta);
     creatorBalance = new BN(balanceResp.value.amount);
-    console.log('[Streamflow] Creator token balance:', {
-      raw: balanceResp.value.amount,
-      uiAmount: balanceResp.value.uiAmount,
-      decimals: balanceResp.value.decimals,
-    });
-  } catch (e) {
-    console.warn('[Streamflow] Could not fetch creator token account (may not exist):', e);
-    // balance stays 0 — will throw below
-  }
-
-  console.log('[Streamflow] Attempting to vest:', totalAmount.toString());
-  console.log('[Streamflow] Creator balance raw:', creatorBalance.toString());
+  } catch { /* ATA missing — balance stays 0 */ }
 
   if (creatorBalance.lt(totalAmount)) {
     const haveUi = creatorBalance.toNumber() / 10 ** 6;
@@ -140,18 +173,6 @@ export async function createVestingStream(
       `Increase your initial buy amount to acquire at least ${needUi.toLocaleString()} tokens before launching with vesting.`,
     );
   }
-
-  console.log('[Streamflow] Balance check passed — proceeding with vesting', {
-    recipient,
-    mint,
-    totalAmount: totalAmount.toString(),
-    start,
-    cliff,
-    cliffDays,
-    unlockDays,
-    amountPerPeriod: amountPerPeriod.toString(),
-    adjustedCliffAmount: adjustedCliffAmount.toString(),
-  });
 
   const result = await client.create(
     {
