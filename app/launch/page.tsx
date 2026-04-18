@@ -100,7 +100,7 @@ const DEFAULT: FormState = {
   cliffDays: 30,
   unlockDays: 365,
   initialBuyEnabled: false,
-  initialBuySol: 0,
+  initialBuySol: 0.1,
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
   bonkBurnEnabled: false,
   feeDestination: '',
@@ -260,7 +260,7 @@ function getTier(rawTotal: number) {
   return TIERS.find((t) => rawTotal >= t.min) ?? TIERS[TIERS.length - 1];
 }
 
-const SCORE_CATEGORIES = ['BASICS', 'SUPPLY', 'CURVE & FUNDRAISE', 'ADVANCED'] as const;
+const SCORE_CATEGORIES = ['BASICS', 'SUPPLY', 'CURVE & FUNDRAISE', 'ADVANCED', 'INITIAL BUY'] as const;
 
 /** The Based Points section — gold-themed, shown below the score items */
 function BasedPointsSection() {
@@ -351,7 +351,7 @@ function BasedScorePanel({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const scoreParams: Partial<LaunchParams> & { imageDataUri?: string } = {
+  const scoreParams: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number } = {
     name: form.tokenName,
     symbol: form.tokenSymbol,
     vestingEnabled: form.vestingEnabled,
@@ -360,6 +360,7 @@ function BasedScorePanel({
     targetSol: form.targetSol,
     creatorFeeOn: form.creatorFeeOn,
     imageDataUri: form.imageDataUri,
+    initialBuySol: form.initialBuyEnabled ? form.initialBuySol : 0,
   };
 
   const { total, rawTotal, hasBasedBonus, basedBonusPts, items } = calcBasedScore(scoreParams, touched);
@@ -672,7 +673,7 @@ function Step3({
   onTouch: (key: ScoreTouchedKey) => void;
 }) {
   const estimatedTokens = (() => {
-    if (!form.initialBuyEnabled || form.initialBuySol <= 0) return 0;
+    if (!form.initialBuyEnabled || form.initialBuySol < 0.001) return 0;
     const sellA = (form.supply * form.curvePercent) / 100;
     const virtualB = (sellA * form.targetSol) / (form.supply - sellA || 1);
     const tokensOut = (sellA * form.initialBuySol) / (virtualB + form.initialBuySol);
@@ -814,22 +815,31 @@ function Step3({
         <Toggle
           checked={form.initialBuyEnabled}
           onChange={(v) => {
-            setForm((f) => ({ ...f, initialBuyEnabled: v, initialBuySol: v ? 0.1 : 0 }));
+            setForm((f) => ({ ...f, initialBuyEnabled: v }));
           }}
           label="INITIAL BUY AT LAUNCH"
         />
         {form.initialBuyEnabled && (
           <div style={toggleContentStyle}>
             <div style={s.field}>
-              <Label>SOL AMOUNT TO BUY</Label>
+              <Label>INITIAL BUY AMOUNT</Label>
               <NumberInput
                 value={form.initialBuySol}
-                onChange={(v) =>
-                  setForm((f) => ({ ...f, initialBuySol: Math.max(0, v) }))
-                }
-                min={0}
-                step={0.1}
+                onChange={(v) => {
+                  setForm((f) => ({ ...f, initialBuySol: v }));
+                  onTouch('initialBuySol');
+                }}
+                min={0.001}
+                max={100}
+                step={0.001}
               />
+              {form.initialBuySol < 0.001 ? (
+                <div style={{ fontFamily: font, fontSize: '11px', color: '#ef4444', letterSpacing: '0.3px' }}>
+                  Minimum 0.001 SOL
+                </div>
+              ) : (
+                <Hint>Minimum 0.001 SOL · Your initial buy determines starting price and gives you the first tokens</Hint>
+              )}
             </div>
             {estimatedTokens > 0 && (
               <div style={s.estimateBox}>
@@ -837,7 +847,6 @@ function Step3({
                 <span style={s.estimateValue}>≈ {fmtNumber(estimatedTokens)}</span>
               </div>
             )}
-            <Hint>⚠ Large initial buys signal insider accumulation — keep it modest.</Hint>
           </div>
         )}
       </div>
@@ -1128,7 +1137,7 @@ function Step4({
   const totalSol =
     LAUNCH_FEE_LAMPORTS / LAMPORTS_PER_SOL +
     networkFeeEstimate +
-    (form.initialBuyEnabled ? form.initialBuySol : 0);
+    (form.initialBuyEnabled ? Math.max(0.001, form.initialBuySol) : 0.001);
 
   const busy = status !== 'idle' && status !== 'done';
 
@@ -1479,8 +1488,8 @@ export default function LaunchPage() {
         cliffSeconds: form.cliffDays * 86400,
         unlockSeconds: form.unlockDays * 86400,
         initialBuyLamports: form.initialBuyEnabled
-          ? Math.round(form.initialBuySol * LAMPORTS_PER_SOL)
-          : 0,
+          ? Math.round(Math.max(0.001, form.initialBuySol) * LAMPORTS_PER_SOL)
+          : Math.round(0.001 * LAMPORTS_PER_SOL),
         creatorFeeOn: form.creatorFeeOn,
       };
 

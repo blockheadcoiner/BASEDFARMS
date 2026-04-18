@@ -415,10 +415,11 @@ export type ScoreTouchedKey =
   | 'supply'
   | 'curvePercent'
   | 'targetSol'
-  | 'creatorFeeOn';
+  | 'creatorFeeOn'
+  | 'initialBuySol';
 
 export function calcBasedScore(
-  params: Partial<LaunchParams> & { imageDataUri?: string },
+  params: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number },
   touched: Set<ScoreTouchedKey> = new Set(),
 ): BasedScoreBreakdown {
   const t = (key: ScoreTouchedKey) => touched.has(key);
@@ -479,6 +480,20 @@ export function calcBasedScore(
   const vestingEarned  = t('vestingEnabled') && !!params.vestingEnabled;
   const creatorEarned  = t('creatorFeeOn') && params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB;
 
+  /* ── INITIAL BUY (up to +10, down to -5) ── */
+  const buySOL = params.initialBuySol ?? 0;
+  const initialBuyEarned = t('initialBuySol') && buySOL > 0;
+  const initialBuyLabel =
+    buySOL <= 0.5 ? 'Initial buy ≤ 0.5 SOL (conservative)'
+    : buySOL <= 2 ? 'Initial buy 0.5–2 SOL (moderate)'
+    : buySOL <= 5 ? 'Initial buy 2–5 SOL (aggressive)'
+    : 'Initial buy > 5 SOL (red flag)';
+  const initialBuyPts =
+    buySOL <= 0.5 ? 10
+    : buySOL <= 2 ? 5
+    : buySOL <= 5 ? 0
+    : -5;
+
   /* ── Build items array ── */
   const items: BasedScoreBreakdown['items'] = [
     { label: 'Token name provided',   pts: 10, earned: hasName,   category: 'BASICS' },
@@ -487,8 +502,9 @@ export function calcBasedScore(
     { label: supplyLabel,    pts: supplyItemPts, earned: supplyEarned,    category: 'SUPPLY' },
     { label: curveItemLabel, pts: curveItemPts,  earned: curveEarned,    category: 'CURVE & FUNDRAISE' },
     { label: solTargetLabel, pts: solTargetPts,  earned: solTargetEarned, category: 'CURVE & FUNDRAISE' },
-    { label: 'Vesting enabled',       pts: 20, earned: vestingEarned, category: 'ADVANCED' },
-    { label: 'Creator fees: SOL only',pts: 10, earned: creatorEarned, category: 'ADVANCED' },
+    { label: 'Vesting enabled',        pts: 20, earned: vestingEarned,    category: 'ADVANCED' },
+    { label: 'Creator fees: SOL only', pts: 10, earned: creatorEarned,    category: 'ADVANCED' },
+    { label: initialBuyLabel,          pts: initialBuyPts, earned: initialBuyEarned, category: 'INITIAL BUY' },
   ];
 
   if (eitherBased) {
@@ -506,7 +522,8 @@ export function calcBasedScore(
     + (curveEarned ? curveItemPts : 0)
     + (solTargetEarned ? solTargetPts : 0)
     + (vestingEarned ? 20 : 0)
-    + (creatorEarned ? 10 : 0);
+    + (creatorEarned ? 10 : 0)
+    + (initialBuyEarned ? initialBuyPts : 0);
 
   const rawTotal = baseScore + basedBonusPts;
   const total    = Math.min(100, rawTotal);
