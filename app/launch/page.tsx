@@ -82,6 +82,7 @@ interface FormState {
   initialBuySol: number;
   creatorFeeOn: CpmmCreatorFeeOn;
   bonkBurnEnabled: boolean;
+  feeDestination: string;
 }
 
 const DEFAULT: FormState = {
@@ -90,7 +91,7 @@ const DEFAULT: FormState = {
   description: '',
   imageDataUri: '',
   decimals: 6,
-  supply: 1_000_000_000,
+  supply: 100_000_000,
   curvePercent: 79.31,
   targetSol: 85,
   token2022: false,
@@ -104,6 +105,7 @@ const DEFAULT: FormState = {
   initialBuySol: 0,
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
   bonkBurnEnabled: false,
+  feeDestination: '',
 };
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -301,19 +303,26 @@ function ScoreItemsList({
         return (
           <div key={cat}>
             <div style={s.scoreCategory}>{cat}</div>
-            {catItems.map((item) => (
-              <div key={item.label} style={s.scoreItem}>
-                <span style={{ color: item.earned ? '#22c55e' : 'rgba(255,255,255,0.4)', fontSize: '8px', flexShrink: 0 }}>
-                  {item.earned ? '✓' : '○'}
-                </span>
-                <span style={{ ...s.scoreItemLabel, color: item.earned ? '#c084fc' : 'rgba(255,255,255,0.4)' }}>
-                  {item.label}
-                </span>
-                <span style={{ ...s.scoreItemPts, color: item.earned ? scoreColor : 'rgba(255,255,255,0.4)' }}>
-                  +{item.pts}
-                </span>
-              </div>
-            ))}
+            {catItems.map((item) => {
+              const isPenalty = item.pts < 0 && item.earned;
+              const earnedColor = isPenalty ? '#ef4444' : scoreColor;
+              const labelColor = item.earned
+                ? isPenalty ? '#fca5a5' : '#e5e5e5'
+                : 'rgba(255,255,255,0.35)';
+              return (
+                <div key={item.label} style={s.scoreItem}>
+                  <span style={{ color: item.earned ? (isPenalty ? '#ef4444' : '#22c55e') : 'rgba(255,255,255,0.35)', fontSize: '9px', flexShrink: 0 }}>
+                    {item.earned ? (isPenalty ? '✕' : '✓') : '○'}
+                  </span>
+                  <span style={{ ...s.scoreItemLabel, color: labelColor }}>
+                    {item.label}
+                  </span>
+                  <span style={{ ...s.scoreItemPts, color: item.earned ? earnedColor : 'rgba(255,255,255,0.35)' }}>
+                    {item.pts >= 0 ? `+${item.pts}` : item.pts}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -585,13 +594,19 @@ function Step2({
         <NumberInput
           value={form.supply}
           onChange={(v) => {
-            setForm((f) => ({ ...f, supply: Math.max(1, Math.round(v)) }));
+            setForm((f) => ({ ...f, supply: Math.max(10_000_000, Math.round(v)) }));
             onTouch('supply');
           }}
-          min={1}
+          min={10_000_000}
           step={1_000_000}
         />
-        <Hint>{fmtNumber(form.supply)} tokens total</Hint>
+        {form.supply < 10_000_000 ? (
+          <div style={{ fontFamily: font, fontSize: '11px', color: '#ef4444', letterSpacing: '0.3px' }}>
+            Min: 10,000,000 — below Raydium requirement
+          </div>
+        ) : (
+          <Hint>Min: 10,000,000 — Raydium requirement · {fmtNumber(form.supply)} selected</Hint>
+        )}
       </div>
 
       <div style={s.field}>
@@ -635,13 +650,24 @@ function Step2({
         <NumberInput
           value={form.targetSol}
           onChange={(v) => {
-            setForm((f) => ({ ...f, targetSol: Math.max(1, v) }));
+            setForm((f) => ({ ...f, targetSol: Math.max(10, v) }));
             onTouch('targetSol');
           }}
-          min={1}
+          min={10}
+          max={500}
           step={5}
         />
-        <Hint>SOL raised before graduating to CPMM pool. Raydium default is 85 SOL</Hint>
+        {form.targetSol < 10 ? (
+          <div style={{ fontFamily: font, fontSize: '11px', color: '#ef4444', letterSpacing: '0.3px' }}>
+            Min 10 SOL — prevents instant graduation
+          </div>
+        ) : form.targetSol > 500 ? (
+          <div style={{ fontFamily: font, fontSize: '11px', color: '#f59e0b', letterSpacing: '0.3px' }}>
+            Very high target — may not graduate
+          </div>
+        ) : (
+          <Hint>SOL raised before graduating to Raydium pool. Default: 85 SOL</Hint>
+        )}
       </div>
 
       <div style={s.curveTypeBox}>
@@ -689,8 +715,11 @@ function Step3({
         <Toggle
           checked={form.token2022}
           onChange={(v) => setForm((f) => ({ ...f, token2022: v }))}
-          label="TOKEN-2022 (REBASED TOKEN)"
+          label="TOKEN-2022 · TRANSFER FEE"
         />
+        <div style={{ ...s.hint, marginTop: '6px' }}>
+          Collect fees on every trade for burns, rewards, or treasury. Transparent on-chain.
+        </div>
         {form.token2022 && (
           <div style={toggleContentStyle}>
             <div style={s.field}>
@@ -722,6 +751,15 @@ function Step3({
                 step={1000}
               />
               <Hint>0 = no cap on transfer fee</Hint>
+            </div>
+            <div style={s.field}>
+              <Label>FEE DESTINATION</Label>
+              <TextInput
+                value={form.feeDestination}
+                onChange={(v) => setForm((f) => ({ ...f, feeDestination: v }))}
+                placeholder="e.g. Weekly token burns + staker rewards"
+              />
+              <Hint>Stored in token metadata for transparency</Hint>
             </div>
           </div>
         )}
@@ -1426,7 +1464,7 @@ export default function LaunchPage() {
         form.tokenName.trim().length > 0 && form.tokenSymbol.trim().length > 0
       );
     if (step === 2)
-      return form.supply > 0 && form.curvePercent >= 20 && form.curvePercent <= 80 && form.targetSol > 0;
+      return form.supply >= 10_000_000 && form.curvePercent >= 20 && form.curvePercent <= 80 && form.targetSol >= 10;
     return true;
   })();
 
@@ -1723,9 +1761,9 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
   },
   stepTitle: {
-    fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '2px',
+    fontFamily: pressStart,
+    fontSize: '14px',
+    letterSpacing: '1px',
     color: '#888888',
     marginBottom: '20px',
     paddingBottom: '12px',
@@ -1739,15 +1777,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   label: {
     fontFamily: font,
-    fontSize: '7px',
-    letterSpacing: '1.5px',
-    color: '#aaaaaa',
+    fontSize: '10px',
+    letterSpacing: '1px',
+    color: '#888888',
   },
   required: { color: '#f97316' },
   hint: {
     fontFamily: font,
-    fontSize: '6px',
-    letterSpacing: '1px',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
     color: '#555555',
     lineHeight: 1.6,
   },
@@ -1758,8 +1796,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: '11px 12px',
     color: '#ffffff',
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '14px',
+    letterSpacing: '0.3px',
     outline: 'none',
     width: '100%',
     boxSizing: 'border-box',
@@ -1777,8 +1815,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: '11px 12px',
     color: '#ffffff',
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '1px',
+    fontSize: '14px',
+    letterSpacing: '0.3px',
     outline: 'none',
     width: '100%',
     boxSizing: 'border-box',
@@ -2134,14 +2172,14 @@ const s: Record<string, React.CSSProperties> = {
   },
   launchBtn: {
     width: '100%',
-    padding: '16px',
+    padding: '14px 24px',
     background: '#f97316',
     border: 'none',
     borderRadius: '10px',
     color: '#000000',
-    fontFamily: font,
-    fontSize: '10px',
-    letterSpacing: '2px',
+    fontFamily: pressStart,
+    fontSize: '11px',
+    letterSpacing: '1px',
     cursor: 'pointer',
     transition: 'opacity 0.2s',
   },
@@ -2168,26 +2206,26 @@ const s: Record<string, React.CSSProperties> = {
   },
   backBtn: {
     flex: 1,
-    padding: '12px',
+    padding: '14px 24px',
     background: 'transparent',
     border: '1px solid #333333',
     borderRadius: '8px',
     color: '#888888',
     fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '2px',
+    fontSize: '11px',
+    letterSpacing: '1px',
     cursor: 'pointer',
   },
   nextBtn: {
     flex: 2,
-    padding: '12px',
+    padding: '14px 24px',
     background: '#f97316',
     border: 'none',
     borderRadius: '8px',
     color: '#000000',
-    fontFamily: font,
-    fontSize: '8px',
-    letterSpacing: '2px',
+    fontFamily: pressStart,
+    fontSize: '11px',
+    letterSpacing: '1px',
     cursor: 'pointer',
   },
   nextBtnDisabled: { opacity: 0.4, cursor: 'not-allowed' },
@@ -2243,16 +2281,16 @@ const s: Record<string, React.CSSProperties> = {
   scoreItem: { display: 'flex', alignItems: 'flex-start', gap: '7px' },
   scoreItemLabel: {
     fontFamily: font,
-    fontSize: '6px',
-    letterSpacing: '0.5px',
+    fontSize: '9px',
+    letterSpacing: '0.3px',
     lineHeight: 1.5,
     flex: 1,
     transition: 'color 0.2s',
   },
   scoreItemPts: {
     fontFamily: font,
-    fontSize: '6px',
-    letterSpacing: '1px',
+    fontSize: '9px',
+    letterSpacing: '0.5px',
     flexShrink: 0,
     transition: 'color 0.2s',
   },
@@ -2305,8 +2343,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   scoreCategory: {
     fontFamily: font,
-    fontSize: '5px',
-    letterSpacing: '2px',
+    fontSize: '9px',
+    letterSpacing: '1.5px',
     color: '#555555',
     marginTop: '10px',
     marginBottom: '5px',

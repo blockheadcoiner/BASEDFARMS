@@ -438,14 +438,16 @@ export function calcBasedScore(
   /* ── SUPPLY (up to 10 pts) — mutually exclusive tiers ── */
   const supply = params.supply ?? 0;
   const supplyLabel =
-    supply === 10_000          ? 'Supply = 10,000 (perfect)'
-    : supply <= 1_000_000      ? 'Supply ≤ 1,000,000'
-    : supply <= 1_000_000_000  ? 'Supply ≤ 1 billion'
-    : 'Supply (no tier match)';
+    supply === 69_000_000     ? 'Supply = 69M (meme number)'
+    : supply <= 100_000_000   ? 'Supply ≤ 100M'
+    : supply <= 500_000_000   ? 'Supply ≤ 500M'
+    : supply <= 1_000_000_000 ? 'Supply ≤ 1B'
+    : 'Supply > 1B';
   const supplyItemPts =
-    supply === 10_000          ? 10
-    : supply <= 1_000_000      ? 5
-    : supply <= 1_000_000_000  ? 3
+    supply === 69_000_000     ? 10
+    : supply <= 100_000_000   ? 8
+    : supply <= 500_000_000   ? 5
+    : supply <= 1_000_000_000 ? 3
     : 0;
   const supplyEarned = t('supply') && supplyItemPts > 0;
 
@@ -458,7 +460,20 @@ export function calcBasedScore(
     ? t('curvePercent') && curve >= 79
     : t('curvePercent') && curve >= 65;
 
-  const targetEarned = t('targetSol') && (params.targetSol ?? 0) >= 50;
+  const sol = params.targetSol ?? 0;
+  const solTargetLabel =
+    sol < 10   ? 'SOL target < 10 (RED FLAG)'
+    : sol < 50  ? 'SOL target 10–49 SOL'
+    : sol < 100 ? 'SOL target 50–99 SOL'
+    : sol <= 200 ? 'SOL target 100–200 SOL'
+    : 'SOL target > 200 SOL';
+  const solTargetPts =
+    sol < 10   ? -10
+    : sol < 50  ? 5
+    : sol < 100 ? 10
+    : sol <= 200 ? 8
+    : 3;
+  const solTargetEarned = t('targetSol');
 
   /* ── ADVANCED (30 pts) ── */
   const vestingEarned  = t('vestingEnabled') && !!params.vestingEnabled;
@@ -469,9 +484,9 @@ export function calcBasedScore(
     { label: 'Token name provided',   pts: 10, earned: hasName,   category: 'BASICS' },
     { label: 'Token symbol provided', pts: 10, earned: hasSymbol, category: 'BASICS' },
     { label: 'Token image uploaded',  pts: 10, earned: hasImage,  category: 'BASICS' },
-    { label: supplyLabel,             pts: supplyItemPts, earned: supplyEarned, category: 'SUPPLY' },
-    { label: curveItemLabel,          pts: curveItemPts,  earned: curveEarned,  category: 'CURVE & FUNDRAISE' },
-    { label: 'SOL target ≥ 50 SOL',  pts: 10, earned: targetEarned, category: 'CURVE & FUNDRAISE' },
+    { label: supplyLabel,    pts: supplyItemPts, earned: supplyEarned,    category: 'SUPPLY' },
+    { label: curveItemLabel, pts: curveItemPts,  earned: curveEarned,    category: 'CURVE & FUNDRAISE' },
+    { label: solTargetLabel, pts: solTargetPts,  earned: solTargetEarned, category: 'CURVE & FUNDRAISE' },
     { label: 'Vesting enabled',       pts: 20, earned: vestingEarned, category: 'ADVANCED' },
     { label: 'Creator fees: SOL only',pts: 10, earned: creatorEarned, category: 'ADVANCED' },
   ];
@@ -489,7 +504,7 @@ export function calcBasedScore(
   const baseScore = (hasName ? 10 : 0) + (hasSymbol ? 10 : 0) + (hasImage ? 10 : 0)
     + (supplyEarned ? supplyItemPts : 0)
     + (curveEarned ? curveItemPts : 0)
-    + (targetEarned ? 10 : 0)
+    + (solTargetEarned ? solTargetPts : 0)
     + (vestingEarned ? 20 : 0)
     + (creatorEarned ? 10 : 0);
 
