@@ -80,6 +80,7 @@ interface FormState {
   initialBuyEnabled: boolean;
   initialBuySol: number;
   creatorFeeOn: CpmmCreatorFeeOn;
+  bonkBurnEnabled: boolean;
 }
 
 const DEFAULT: FormState = {
@@ -101,6 +102,7 @@ const DEFAULT: FormState = {
   initialBuyEnabled: false,
   initialBuySol: 0,
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
+  bonkBurnEnabled: false,
 };
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -821,6 +823,20 @@ function Step3({
         )}
       </div>
 
+      {/* BONK Burn */}
+      <div style={s.toggleSection}>
+        <Toggle
+          checked={form.bonkBurnEnabled}
+          onChange={(v) => setForm((f) => ({ ...f, bonkBurnEnabled: v }))}
+          label="🔥 BONK BURN ANIMATION ON SUCCESS"
+        />
+        {form.bonkBurnEnabled && (
+          <div style={{ ...toggleContentStyle }}>
+            <Hint>Shows a BONK dog burn animation on the launch success screen.</Hint>
+          </div>
+        )}
+      </div>
+
       {/* Creator Fees */}
       <div style={s.toggleSection}>
         <div style={s.toggleLabel2}>CREATOR FEE TYPE</div>
@@ -857,6 +873,218 @@ function Step3({
         <Hint>SOL only = simpler, no sell pressure from creator fees</Hint>
       </div>
     </Card>
+  );
+}
+
+/* ── BONK Burn Animation ─────────────────────────────────────────────────── */
+
+const BONK_BURN_CSS = `
+  @keyframes bonkSlideUp {
+    from { transform: translateY(200px); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
+  @keyframes bonkFlicker {
+    0%   { transform: scaleY(1)   rotate(-3deg); opacity: 0.9; }
+    100% { transform: scaleY(1.2) rotate( 3deg); opacity: 1;   }
+  }
+  @keyframes bonkFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
+  @keyframes bonkCountGlow {
+    0%   { text-shadow: 0 0 10px #ff6b00, 0 0 20px #ff0000; }
+    50%  { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ff6b00; }
+    100% { text-shadow: 0 0 10px #ff6b00, 0 0 20px #ff0000; }
+  }
+  .bonk-flame::before {
+    content: '🔥';
+    font-size: 36px;
+    display: block;
+    animation: bonkFlicker 0.3s ease-in-out infinite alternate;
+  }
+  .bonk-flame-sm::before {
+    content: '🔥';
+    font-size: 24px;
+    display: block;
+    animation: bonkFlicker 0.3s ease-in-out infinite alternate;
+  }
+`;
+
+type BurnPhase = 'initial' | 'dog' | 'burning' | 'done';
+
+function BonkBurnAnimation({
+  supply,
+  curvePercent,
+  isMobile,
+}: {
+  supply: number;
+  curvePercent: number;
+  isMobile: boolean;
+}) {
+  const sellA = Math.round((supply * curvePercent) / 100);
+  const remaining = supply - sellA;
+
+  const [phase, setPhase] = useState<BurnPhase>('initial');
+  const [displayCount, setDisplayCount] = useState(supply);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase('dog'), 300);
+    const t2 = setTimeout(() => {
+      setPhase('burning');
+      const start = supply;
+      const end = remaining;
+      const duration = 1500;
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min((now - t0) / duration, 1);
+        // ease-in-out quad for dramatic effect
+        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        setDisplayCount(Math.round(start - (start - end) * eased));
+        if (p < 1) {
+          rafRef.current = requestAnimationFrame(tick);
+        } else {
+          setDisplayCount(end);
+          setPhase('done');
+        }
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }, 1100);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [supply, remaining]);
+
+  const flameClass = isMobile ? 'bonk-flame-sm' : 'bonk-flame';
+  const isBurning = phase === 'burning' || phase === 'done';
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '8px',
+        maxHeight: '300px',
+        overflow: 'hidden',
+        padding: isMobile ? '10px 8px 0' : '14px 12px 0',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* inject keyframes once */}
+      <style>{BONK_BURN_CSS}</style>
+
+      {/* TOKEN LAUNCHED header */}
+      <div
+        style={{
+          fontFamily: font,
+          fontSize: isMobile ? '8px' : '10px',
+          letterSpacing: '3px',
+          color: '#e879f9',
+          textShadow: '0 0 12px rgba(232,121,249,0.9)',
+          textAlign: 'center',
+        }}
+      >
+        TOKEN LAUNCHED!
+      </div>
+
+      {/* Supply number + flanking flames */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: isMobile ? '4px' : '8px',
+          minHeight: isMobile ? '40px' : '50px',
+        }}
+      >
+        {isBurning && <div className={flameClass} />}
+
+        <div
+          style={{
+            fontFamily: font,
+            fontSize: isMobile ? '16px' : '22px',
+            letterSpacing: '2px',
+            color: phase === 'burning' ? '#ff6b00' : '#db2777',
+            textShadow:
+              phase === 'burning'
+                ? undefined
+                : '0 0 16px rgba(219,39,119,0.8)',
+            animation: phase === 'burning' ? 'bonkCountGlow 0.3s ease-in-out infinite' : undefined,
+            transition: 'color 0.3s ease',
+            minWidth: isMobile ? '130px' : '190px',
+            textAlign: 'center',
+          }}
+        >
+          {displayCount.toLocaleString()}
+        </div>
+
+        {isBurning && <div className={flameClass} />}
+      </div>
+
+      {/* Bonk dog slides up */}
+      {(phase === 'dog' || phase === 'burning' || phase === 'done') && (
+        <div
+          style={{
+            fontSize: isMobile ? '30px' : '40px',
+            animation: 'bonkSlideUp 0.8s ease-out',
+            lineHeight: 1,
+          }}
+        >
+          🐕
+        </div>
+      )}
+
+      {/* Final burn complete state */}
+      {phase === 'done' && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '5px',
+            animation: 'bonkFadeIn 0.4s ease-out',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: font,
+              fontSize: isMobile ? '7px' : '8px',
+              letterSpacing: '2px',
+              color: '#f59e0b',
+              textShadow: '0 0 12px rgba(245,158,11,0.9)',
+            }}
+          >
+            🔥 BONK BURN COMPLETE 🔥
+          </div>
+          <div
+            style={{
+              fontFamily: font,
+              fontSize: isMobile ? '6px' : '7px',
+              letterSpacing: '1.5px',
+              color: '#ef4444',
+              textShadow: '0 0 8px rgba(239,68,68,0.6)',
+            }}
+          >
+            BURNED: {sellA.toLocaleString()}
+          </div>
+          <div
+            style={{
+              fontFamily: font,
+              fontSize: isMobile ? '6px' : '7px',
+              letterSpacing: '1.5px',
+              color: '#db2777',
+              textShadow: '0 0 10px rgba(219,39,119,0.8)',
+            }}
+          >
+            REMAINING: {remaining.toLocaleString()} FOREVER
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1009,7 +1237,15 @@ function Step4({
       {/* Success */}
       {status === 'done' && txIds.length > 0 && (
         <div style={s.successBox}>
-          <div style={s.successTitle}>🚀 TOKEN LAUNCHED!</div>
+          {form.bonkBurnEnabled ? (
+            <BonkBurnAnimation
+              supply={form.supply}
+              curvePercent={form.curvePercent}
+              isMobile={isMobile}
+            />
+          ) : (
+            <div style={s.successTitle}>🚀 TOKEN LAUNCHED!</div>
+          )}
           <div style={s.txList}>
             {txIds.map((sig, i) => (
               <a
