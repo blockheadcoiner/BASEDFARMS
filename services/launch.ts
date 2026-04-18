@@ -76,7 +76,14 @@ const DEVNET_PLATFORM_ID = new PublicKey('9abQu8Q1zuJ8AP5yZUUQ2gMm9eMqr45cdf23PP
  * Mainnet: reads NEXT_PUBLIC_PLATFORM_ID (registered via /admin/platform).
  */
 function getPlatformId(): PublicKey | undefined {
-  if (IS_DEVNET) return DEVNET_PLATFORM_ID;
+  if (IS_DEVNET) {
+    const envId = process.env.NEXT_PUBLIC_DEVNET_PLATFORM_ID;
+    if (envId) {
+      try { return new PublicKey(envId); }
+      catch { console.warn('[Launch] Invalid NEXT_PUBLIC_DEVNET_PLATFORM_ID — using hardcoded fallback'); }
+    }
+    return DEVNET_PLATFORM_ID;
+  }
   const id = process.env.NEXT_PUBLIC_PLATFORM_ID;
   if (!id) return undefined;
   try { return new PublicKey(id); } catch { return undefined; }
