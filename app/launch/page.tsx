@@ -221,20 +221,23 @@ function Toggle({
   checked,
   onChange,
   label,
+  disabled,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <div
-      style={s.toggleRow}
-      onClick={() => onChange(!checked)}
+      style={{ ...s.toggleRow, ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+      onClick={() => { if (!disabled) onChange(!checked); }}
       role="switch"
       aria-checked={checked}
-      tabIndex={0}
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onChange(!checked);
+        if (!disabled && (e.key === 'Enter' || e.key === ' ')) onChange(!checked);
       }}
     >
       <div
@@ -692,6 +695,15 @@ function Step3({
     return Math.round(tokensOut);
   })();
 
+  // Minimum initial buy to cover the vesting allocation from creator's wallet
+  const minInitialBuyForVesting = (() => {
+    if (!form.vestingEnabled) return 0;
+    const vestingTokens = (form.supply * form.vestingPercent) / 100;
+    const curveTokens = (form.supply * form.curvePercent) / 100;
+    const rawMin = (vestingTokens / (curveTokens || 1)) * form.targetSol * 0.1;
+    return Math.max(0.01, Math.ceil(rawMin * 100) / 100);
+  })();
+
   // Remove indent on mobile — space is precious
   const toggleContentStyle: React.CSSProperties = {
     ...s.toggleContent,
@@ -763,7 +775,25 @@ function Step3({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
           <Toggle
             checked={form.vestingEnabled}
-            onChange={(v) => { setForm((f) => ({ ...f, vestingEnabled: v })); onTouch('vestingEnabled'); }}
+            onChange={(v) => {
+            setForm((f) => {
+              if (v) {
+                // Enabling vesting — auto-enable initial buy with minimum amount
+                const vestTokens = (f.supply * f.vestingPercent) / 100;
+                const curveTokens = (f.supply * f.curvePercent) / 100;
+                const rawMin = (vestTokens / (curveTokens || 1)) * f.targetSol * 0.1;
+                const minBuy = Math.max(0.01, Math.ceil(rawMin * 100) / 100);
+                return {
+                  ...f,
+                  vestingEnabled: true,
+                  initialBuyEnabled: true,
+                  initialBuySol: Math.max(f.initialBuySol, minBuy),
+                };
+              }
+              return { ...f, vestingEnabled: false };
+            });
+            onTouch('vestingEnabled');
+          }}
             label="VESTING"
           />
           {form.vestingEnabled && (
@@ -853,10 +883,18 @@ function Step3({
         <Toggle
           checked={form.initialBuyEnabled}
           onChange={(v) => {
+            // Vesting requires initial buy — prevent disabling when vesting is on
+            if (!v && form.vestingEnabled) return;
             setForm((f) => ({ ...f, initialBuyEnabled: v }));
           }}
-          label="INITIAL BUY AT LAUNCH"
+          label={form.vestingEnabled ? 'INITIAL BUY AT LAUNCH (required for vesting)' : 'INITIAL BUY AT LAUNCH'}
+          disabled={form.vestingEnabled}
         />
+        {form.vestingEnabled && (
+          <div style={{ fontFamily: font, fontSize: '11px', color: '#f97316', marginTop: '4px', letterSpacing: '0.3px' }}>
+            Initial buy required to fund vesting — cannot be disabled
+          </div>
+        )}
         {form.initialBuyEnabled && (
           <div style={toggleContentStyle}>
             <div style={s.field}>
@@ -864,14 +902,22 @@ function Step3({
               <NumberInput
                 value={form.initialBuySol}
                 onChange={(v) => {
-                  setForm((f) => ({ ...f, initialBuySol: v }));
+                  // Enforce minimum when vesting is active
+                  const min = form.vestingEnabled ? minInitialBuyForVesting : 0.001;
+                  setForm((f) => ({ ...f, initialBuySol: Math.max(min, v) }));
                   onTouch('initialBuySol');
                 }}
-                min={0.001}
+                min={form.vestingEnabled ? minInitialBuyForVesting : 0.001}
                 max={100}
                 step={0.001}
               />
-              {form.initialBuySol < 0.001 ? (
+              {form.vestingEnabled && form.initialBuySol < minInitialBuyForVesting ? (
+                <div style={{ fontFamily: font, fontSize: '11px', color: '#ef4444', letterSpacing: '0.3px' }}>
+                  Minimum {minInitialBuyForVesting} SOL to fund vesting
+                </div>
+              ) : form.vestingEnabled ? (
+                <Hint>Minimum {minInitialBuyForVesting} SOL to fund vesting · You receive these tokens at launch</Hint>
+              ) : form.initialBuySol < 0.001 ? (
                 <div style={{ fontFamily: font, fontSize: '11px', color: '#ef4444', letterSpacing: '0.3px' }}>
                   Minimum 0.001 SOL
                 </div>
@@ -1691,9 +1737,16 @@ export default function LaunchPage() {
         vestingPercent: form.vestingPercent,
         cliffSeconds: form.cliffDays * 86400,
         unlockSeconds: form.unlockDays * 86400,
-        initialBuyLamports: form.initialBuyEnabled
-          ? Math.round(Math.max(0.001, form.initialBuySol) * LAMPORTS_PER_SOL)
-          : Math.round(0.001 * LAMPORTS_PER_SOL),
+        initialBuyLamports: (() => {
+          if (!form.initialBuyEnabled) return Math.round(0.001 * LAMPORTS_PER_SOL);
+          // When vesting is on, enforce minimum SOL needed to acquire vesting tokens
+          const vestingTokens = form.vestingEnabled ? (form.supply * form.vestingPercent) / 100 : 0;
+          const curveTokens = (form.supply * form.curvePercent) / 100;
+          const minForVesting = form.vestingEnabled
+            ? Math.max(0.01, Math.ceil((vestingTokens / (curveTokens || 1)) * form.targetSol * 0.1 * 100) / 100)
+            : 0.001;
+          return Math.round(Math.max(minForVesting, form.initialBuySol) * LAMPORTS_PER_SOL);
+        })(),
         creatorFeeOn: form.creatorFeeOn,
       };
 
