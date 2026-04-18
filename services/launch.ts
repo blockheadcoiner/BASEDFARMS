@@ -115,7 +115,7 @@ export interface LaunchParams {
   description: string;
   /** base64 data URI for the token image, or empty string */
   imageDataUri: string;
-  decimals: 6 | 9;
+  decimals: 6;
 
   // Step 2 — Supply & curve
   /** Total token supply (in whole tokens, e.g. 1_000_000_000) */
@@ -236,7 +236,7 @@ export async function createToken(
   console.log('[Launch] mintA:', mintKeypair.publicKey.toBase58());
 
   // ── Compute curve parameters (raw BN values) ───────────────────────────────
-  const supplyRaw = new BN(params.supply).mul(new BN(10 ** params.decimals));
+  const supplyRaw = new BN(params.supply).mul(new BN(10 ** 6));
 
   // totalSellA = curvePercent% of supply (tokens available on the bonding curve)
   const totalSellA = supplyRaw
@@ -284,7 +284,7 @@ export async function createToken(
     name: params.name,
     symbol: params.symbol,
     uri: metadataUri,
-    decimals: params.decimals,
+    decimals: 6,
     configId,
     configInfo,
     migrateType: 'cpmm',

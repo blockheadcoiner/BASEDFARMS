@@ -67,7 +67,6 @@ interface FormState {
   tokenSymbol: string;
   description: string;
   imageDataUri: string;
-  decimals: 6 | 9;
   supply: number;
   curvePercent: number;
   targetSol: number;
@@ -90,7 +89,6 @@ const DEFAULT: FormState = {
   tokenSymbol: '',
   description: '',
   imageDataUri: '',
-  decimals: 6,
   supply: 100_000_000,
   curvePercent: 79.31,
   targetSol: 85,
@@ -547,24 +545,6 @@ function Step1({
         )}
       </div>
 
-      <div style={s.field}>
-        <Label>DECIMALS</Label>
-        <div style={s.radioGroup}>
-          {([6, 9] as (6 | 9)[]).map((d) => (
-            <button
-              key={d}
-              style={{
-                ...s.radioBtn,
-                ...(form.decimals === d ? s.radioBtnActive : {}),
-              }}
-              onClick={() => setForm((f) => ({ ...f, decimals: d }))}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
-        <Hint>6 = most common (like USDC) · 9 = like SOL</Hint>
-      </div>
     </Card>
   );
 }
@@ -1169,7 +1149,7 @@ function Step4({
       <div style={s.reviewTable}>
         <ReviewRow label="TOKEN NAME" value={form.tokenName || '—'} isMobile={isMobile} />
         <ReviewRow label="SYMBOL" value={form.tokenSymbol || '—'} isMobile={isMobile} />
-        <ReviewRow label="DECIMALS" value={String(form.decimals)} isMobile={isMobile} />
+        <ReviewRow label="DECIMALS" value="6" isMobile={isMobile} />
         <ReviewRow label="TOTAL SUPPLY" value={fmtNumber(form.supply)} isMobile={isMobile} />
         <ReviewRow
           label="SOLD ON CURVE"
@@ -1485,14 +1465,14 @@ export default function LaunchPage() {
         symbol: form.tokenSymbol,
         description: form.description,
         imageDataUri: form.imageDataUri,
-        decimals: form.decimals,
+        decimals: 6,
         supply: form.supply,
         curvePercent: form.curvePercent,
         targetSol: form.targetSol,
         token2022: form.token2022,
         transferFeeBps: form.transferFeeBps,
         maxTransferFeeRaw: BigInt(
-          Math.round(form.maxTransferFeeTokens * Math.pow(10, form.decimals)),
+          Math.round(form.maxTransferFeeTokens * Math.pow(10, 6)),
         ),
         vestingEnabled: form.vestingEnabled,
         vestingPercent: form.vestingPercent,
