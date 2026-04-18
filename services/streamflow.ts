@@ -8,7 +8,7 @@
  * Dashboard: https://app.streamflow.finance
  */
 import { SolanaStreamClient, ICluster } from '@streamflow/stream';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 import BN from 'bn.js';
 
@@ -174,34 +174,67 @@ export async function createVestingStream(
     );
   }
 
-  const result = await client.create(
+  // ── Build instructions (no wallet signing yet) ───────────────────────────
+  // Use buildCreateTransactionInstructions so we control tx submission.
+  // This avoids the SDK's internal retry logic that causes AlreadyProcessed.
+  const streamParams = {
+    tokenId: mint,
+    period,
+    start,
+    cliff,
+    cancelableBySender: true,
+    cancelableByRecipient: false,
+    transferableBySender: false,
+    transferableByRecipient: true,
+    canTopup: false,
+    recipient,
+    amount: totalAmount,
+    name: `${tokenName} Vesting`,
+    cliffAmount: adjustedCliffAmount,
+    amountPerPeriod,
+  };
+
+  const { ixs, metadataId, metadata } = await client.buildCreateTransactionInstructions(
+    streamParams,
     {
-      // IBaseStreamConfig
-      tokenId: mint,
-      period,
-      start,
-      cliff,
-      cancelableBySender: true,
-      cancelableByRecipient: false,
-      transferableBySender: false,
-      transferableByRecipient: true,
-      canTopup: false,
-      // IRecipient
-      recipient,
-      amount: totalAmount,
-      name: `${tokenName} Vesting`,
-      cliffAmount: adjustedCliffAmount,
-      amountPerPeriod,
-    },
-    {
-      sender: wallet,
+      sender: { publicKey: creatorPubkey },
       isNative: false,
     },
   );
 
-  const { txId, metadataId } = result;
+  console.log('[Streamflow] instructions built, metadataId:', metadataId, '| metadata keypair:', metadata ? 'present' : 'none');
 
-  console.log('[Streamflow] stream created:', { txId, streamId: metadataId });
+  // ── Build legacy transaction manually ────────────────────────────────────
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const tx = new Transaction();
+  tx.feePayer = creatorPubkey;
+  tx.recentBlockhash = blockhash;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx.add(...(ixs as any[]));
+
+  // Pre-sign with stream escrow metadata keypair if SDK provided one
+  if (metadata) {
+    // metadata is a Keypair from Streamflow's vendored @solana/web3.js;
+    // cast to any to avoid duplicate-package type conflict
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx.partialSign(metadata as any);
+  }
+
+  // User wallet signs
+  if (!wallet.signTransaction) {
+    throw new Error('Wallet does not support signTransaction — use Phantom or Backpack');
+  }
+  const signed = await wallet.signTransaction(tx);
+
+  // ── Send ONCE, no SDK retries ─────────────────────────────────────────────
+  console.log('[Streamflow] sending transaction once (maxRetries: 0)...');
+  const txId = await connection.sendRawTransaction(signed.serialize(), {
+    maxRetries: 0,
+    skipPreflight: false,
+  });
+  console.log('[Streamflow] sent:', txId);
+  await connection.confirmTransaction({ signature: txId, blockhash, lastValidBlockHeight }, 'confirmed');
+  console.log('[Streamflow] confirmed:', txId);
 
   return {
     streamId: metadataId,
