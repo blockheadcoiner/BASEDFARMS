@@ -236,21 +236,34 @@ export async function createToken(
   console.log('[Launch] mintA:', mintKeypair.publicKey.toBase58());
 
   // ── Compute curve parameters (raw BN values) ───────────────────────────────
-  const supplyRaw = new BN(params.supply).mul(new BN(10).pow(new BN(params.decimals)));
-  const sellPercent = Math.min(100, Math.max(20, params.curvePercent));
-  // totalSellA = tokens available for purchase on the bonding curve
-  const totalSellA = supplyRaw.muln(Math.round(sellPercent * 100)).divn(10_000);
+  const supplyRaw = new BN(params.supply).mul(new BN(10 ** params.decimals));
+
+  // totalSellA = curvePercent% of supply (tokens available on the bonding curve)
+  const totalSellA = supplyRaw
+    .mul(new BN(Math.floor(params.curvePercent * 100)))
+    .div(new BN(10000));
+
+  // migrateAmount = tokens reserved for the AMM pool at graduation
+  const migrateAmount = supplyRaw.sub(totalSellA);
+
+  // Validate: at least 20% of supply must remain for the AMM pool
+  const minMigrate = supplyRaw.mul(new BN(20)).div(new BN(100));
+  if (migrateAmount.lt(minMigrate)) {
+    throw new Error('At least 20% of supply must be reserved for the Raydium AMM pool');
+  }
+
   // totalLockedAmount = tokens reserved for vesting (0 if disabled)
   const vestPercent = params.vestingEnabled ? Math.min(30, Math.max(0, params.vestingPercent)) : 0;
-  const totalLockedAmount = supplyRaw.muln(Math.round(vestPercent * 100)).divn(10_000);
+  const totalLockedAmount = supplyRaw
+    .mul(new BN(Math.round(vestPercent * 100)))
+    .div(new BN(10000));
   const totalFundRaisingB = new BN(Math.round(params.targetSol * LAMPORTS_PER_SOL));
 
-  console.log('[Launch] curve params:', {
-    supplyRaw: supplyRaw.toString(),
-    totalSellA: totalSellA.toString(),
-    totalLockedAmount: totalLockedAmount.toString(),
-    totalFundRaisingB: totalFundRaisingB.toString(),
-  });
+  console.log('[Launch] supply:', supplyRaw.toString());
+  console.log('[Launch] totalSellA:', totalSellA.toString());
+  console.log('[Launch] migrateAmount:', migrateAmount.toString());
+  console.log('[Launch] totalLockedAmount:', totalLockedAmount.toString());
+  console.log('[Launch] totalFundRaisingB:', totalFundRaisingB.toString());
 
   // ── Initial buy ────────────────────────────────────────────────────────────
   const buyAmount = new BN(params.initialBuyLamports);

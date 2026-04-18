@@ -600,7 +600,7 @@ function Step2({
             type="range"
             style={{ ...s.slider, width: '100%' }}
             min={20}
-            max={100}
+            max={80}
             step={0.01}
             value={form.curvePercent}
             onChange={(e) => {
@@ -626,7 +626,7 @@ function Step2({
             <span style={s.curveStatValue}>{fmtNumber(reserved)}</span>
           </div>
         </div>
-        <Hint>Higher % = fairer distribution. Raydium default is 79.31%</Hint>
+        <Hint>Max 80% — 20% reserved for Raydium pool. Raydium default is 79.31%</Hint>
       </div>
 
       <div style={s.field}>
@@ -1431,7 +1431,7 @@ export default function LaunchPage() {
         form.tokenName.trim().length > 0 && form.tokenSymbol.trim().length > 0
       );
     if (step === 2)
-      return form.supply > 0 && form.curvePercent >= 20 && form.targetSol > 0;
+      return form.supply > 0 && form.curvePercent >= 20 && form.curvePercent <= 80 && form.targetSol > 0;
     return true;
   })();
 
