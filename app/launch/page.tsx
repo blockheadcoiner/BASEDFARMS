@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
+import { Connection, LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import {
   createToken,
@@ -11,6 +11,7 @@ import {
   calcBasedScore,
   CpmmCreatorFeeOn,
   LAUNCH_FEE_LAMPORTS,
+  LAUNCH_RPC,
   type LaunchParams,
   type ScoreTouchedKey,
 } from '@/services/launch';
@@ -831,8 +832,8 @@ function Step3({
                 <span style={s.sliderValue}>{form.vestingPercent}%</span>
               </div>
               <Hint>
-                {fmtNumber(Math.round((form.supply * form.vestingPercent) / 100))}{' '}
-                tokens locked for vesting
+                Up to {fmtNumber(Math.round((form.supply * form.vestingPercent) / 100))}{' '}
+                tokens locked for vesting (exact amount based on initial buy outcome)
               </Hint>
             </div>
             {/* Stack cliff/unlock on mobile */}
@@ -1352,7 +1353,7 @@ function Step4({
           label="VESTING"
           value={
             form.vestingEnabled
-              ? `${fmtNumber(vestA)} (${form.vestingPercent}%)`
+              ? `UP TO ${fmtNumber(vestA)} (${form.vestingPercent}%)`
               : 'NONE'
           }
           isMobile={isMobile}
@@ -1764,15 +1765,50 @@ export default function LaunchPage() {
 
         const vestPercent = Math.min(30, Math.max(0, form.vestingPercent));
         const supplyRaw = form.supply * 10 ** 6;
-        const totalAmount = new BN(
+        const requestedAmount = new BN(
           Math.round(supplyRaw * vestPercent / 100).toString()
         );
+
+        // Fetch actual creator token balance — bonding curve first-buy gives
+        // fewer tokens than the formula estimate, so we cap at 95% of actual.
+        const { PublicKey: PK, Connection: Conn } = await import('@solana/web3.js');
+        const { getAssociatedTokenAddress: getATA } = await import('@solana/spl-token');
+        const mintPk = new PK(result.mintAddress);
+        const connection = new Conn(LAUNCH_RPC, 'confirmed');
+        const creatorAta = await getATA(mintPk, publicKey);
+        let actualBalance = new BN(0);
+        try {
+          const balResp = await connection.getTokenAccountBalance(creatorAta);
+          actualBalance = new BN(balResp.value.amount);
+          console.log('[Launch] Creator actual token balance:', {
+            raw: balResp.value.amount,
+            uiAmount: balResp.value.uiAmount,
+          });
+        } catch (e) {
+          console.warn('[Launch] Could not fetch creator ATA balance:', e);
+        }
+
+        // Use min(requested, 95% of actual balance) so vesting is always funded
+        const safeMax = actualBalance.muln(95).divn(100);
+        const totalAmount = requestedAmount.lte(safeMax) ? requestedAmount : safeMax;
+
+        console.log('[Launch] Vesting amounts:', {
+          requested: requestedAmount.toString(),
+          safeMax: safeMax.toString(),
+          using: totalAmount.toString(),
+        });
+
+        if (totalAmount.lten(0)) {
+          throw new Error(
+            'Initial buy did not yield enough tokens to fund vesting. ' +
+            'Increase the initial buy amount and try again.',
+          );
+        }
 
         // Resolve beneficiary address — fall back to creator wallet
         let recipient = publicKey.toBase58();
         if (form.vestingBeneficiary.trim()) {
           try {
-            const { PublicKey: PK } = await import('@solana/web3.js');
             new PK(form.vestingBeneficiary.trim()); // validate
             recipient = form.vestingBeneficiary.trim();
           } catch {
@@ -1782,6 +1818,7 @@ export default function LaunchPage() {
 
         const vestResult = await createVestingStream({
           wallet: walletContext,
+          creatorPublicKey: publicKey.toBase58(),
           recipient,
           mint: result.mintAddress,
           totalAmount,

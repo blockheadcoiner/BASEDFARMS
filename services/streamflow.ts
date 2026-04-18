@@ -8,6 +8,8 @@
  * Dashboard: https://app.streamflow.finance
  */
 import { SolanaStreamClient, ICluster } from '@streamflow/stream';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddress } from '@solana/spl-token';
 import BN from 'bn.js';
 
 import { IS_DEVNET, LAUNCH_RPC } from './launch';
@@ -28,6 +30,8 @@ type WalletAdapter = any;
 export interface CreateVestingParams {
   /** Connected wallet adapter — used as the stream sender/payer */
   wallet: WalletAdapter;
+  /** Creator's wallet public key (base58) — used to verify token balance before vesting */
+  creatorPublicKey: string;
   /** Recipient wallet address (base58 string) */
   recipient: string;
   /** Token mint address (base58 string) */
@@ -79,7 +83,7 @@ function daysToSeconds(days: number): number {
 export async function createVestingStream(
   params: CreateVestingParams,
 ): Promise<CreateVestingResult> {
-  const { wallet, recipient, mint, totalAmount, cliffDays, unlockDays, tokenName } = params;
+  const { wallet, creatorPublicKey, recipient, mint, totalAmount, cliffDays, unlockDays, tokenName } = params;
 
   const cliffSeconds = daysToSeconds(cliffDays);
   const unlockSeconds = daysToSeconds(unlockDays);
@@ -105,7 +109,39 @@ export async function createVestingStream(
 
   const client = getClient();
 
-  console.log('[Streamflow] createVestingStream', {
+  // ── Pre-flight: verify creator actually holds enough tokens ───────────────
+  const connection = new Connection(LAUNCH_RPC, 'confirmed');
+  const mintPubkey = new PublicKey(mint);
+  const creatorPubkey = new PublicKey(creatorPublicKey);
+  const creatorAta = await getAssociatedTokenAddress(mintPubkey, creatorPubkey);
+
+  let creatorBalance = new BN(0);
+  try {
+    const balanceResp = await connection.getTokenAccountBalance(creatorAta);
+    creatorBalance = new BN(balanceResp.value.amount);
+    console.log('[Streamflow] Creator token balance:', {
+      raw: balanceResp.value.amount,
+      uiAmount: balanceResp.value.uiAmount,
+      decimals: balanceResp.value.decimals,
+    });
+  } catch (e) {
+    console.warn('[Streamflow] Could not fetch creator token account (may not exist):', e);
+    // balance stays 0 — will throw below
+  }
+
+  console.log('[Streamflow] Attempting to vest:', totalAmount.toString());
+  console.log('[Streamflow] Creator balance raw:', creatorBalance.toString());
+
+  if (creatorBalance.lt(totalAmount)) {
+    const haveUi = creatorBalance.toNumber() / 10 ** 6;
+    const needUi = totalAmount.toNumber() / 10 ** 6;
+    throw new Error(
+      `Insufficient tokens to vest. Have ${haveUi.toLocaleString()} tokens, need ${needUi.toLocaleString()}. ` +
+      `Increase your initial buy amount to acquire at least ${needUi.toLocaleString()} tokens before launching with vesting.`,
+    );
+  }
+
+  console.log('[Streamflow] Balance check passed — proceeding with vesting', {
     recipient,
     mint,
     totalAmount: totalAmount.toString(),
