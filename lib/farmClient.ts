@@ -1,3 +1,9 @@
+/**
+ * @deprecated Replaced by services/raydiumFarm.ts (Raydium V6 permissionless farms).
+ * This file is kept for reference only and is no longer imported anywhere.
+ * The custom Anchor farm program (3tC6fGzkF5xpK1paLMvcGQV2WpY2QEYzdMPSGAogbjzg) is deprecated.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Connection, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';

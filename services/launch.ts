@@ -163,6 +163,7 @@ export async function uploadMetadata(params: {
   symbol: string;
   description: string;
   imageDataUri: string;
+  extensions?: Record<string, unknown>;
 }): Promise<string> {
   const origin =
     typeof window !== 'undefined'
@@ -177,6 +178,7 @@ export async function uploadMetadata(params: {
       symbol: params.symbol,
       description: params.description,
       image: params.imageDataUri,
+      extensions: params.extensions,
     }),
   });
 

@@ -82,6 +82,10 @@ interface FormState {
   creatorFeeOn: CpmmCreatorFeeOn;
   bonkBurnEnabled: boolean;
   feeDestination: string;
+  farmType: 'staking' | 'lp' | 'revenue' | 'later';
+  rewardAllocationPct: number;
+  farmDurationDays: number;
+  autoDeployAtGrad: boolean;
 }
 
 const DEFAULT: FormState = {
@@ -104,6 +108,10 @@ const DEFAULT: FormState = {
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
   bonkBurnEnabled: false,
   feeDestination: '',
+  farmType: 'lp',
+  rewardAllocationPct: 20,
+  farmDurationDays: 30,
+  autoDeployAtGrad: true,
 };
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -898,6 +906,95 @@ function Step3({
         </div>
         <Hint>SOL only = simpler, no sell pressure from creator fees</Hint>
       </div>
+
+      {/* Farm Config */}
+      <div style={s.toggleSection}>
+        <div style={s.toggleLabel2}>FARM AT GRADUATION</div>
+        <div style={{ ...s.hint, marginTop: '6px' }}>
+          Auto-deploy a yield farm when this token graduates to Raydium CPMM
+        </div>
+        <div style={{ ...toggleContentStyle, paddingLeft: 0, paddingTop: '12px' }}>
+          {/* Farm type */}
+          <div style={s.field}>
+            <Label>FARM TYPE</Label>
+            <div style={s.radioGroup}>
+              {(['lp', 'staking', 'revenue', 'later'] as const).map((t) => (
+                <button
+                  key={t}
+                  style={{
+                    ...s.radioBtn,
+                    ...(form.farmType === t ? s.radioBtnActive : {}),
+                    textTransform: 'uppercase',
+                    fontSize: '10px',
+                  }}
+                  onClick={() => setForm((f) => ({ ...f, farmType: t }))}
+                >
+                  {t === 'lp' ? 'LP STAKING' : t === 'staking' ? 'TOKEN STAKING' : t === 'revenue' ? 'REVENUE SHARE' : 'LATER'}
+                </button>
+              ))}
+            </div>
+            <Hint>
+              {form.farmType === 'lp' && 'LP holders earn rewards — deepens liquidity'}
+              {form.farmType === 'staking' && 'Token holders earn rewards — rewards long-term holders'}
+              {form.farmType === 'revenue' && 'Trading fees distributed to stakers — real yield'}
+              {form.farmType === 'later' && 'Skip for now — deploy manually from the farm page'}
+            </Hint>
+          </div>
+
+          {form.farmType !== 'later' && (
+            <>
+              {/* Reward allocation */}
+              <div style={s.field}>
+                <Label>REWARD ALLOCATION (% of supply)</Label>
+                <div style={s.sliderRow}>
+                  <input
+                    type="range"
+                    style={{ ...s.slider, width: '100%' }}
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={form.rewardAllocationPct}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, rewardAllocationPct: parseInt(e.target.value) }))
+                    }
+                  />
+                  <span style={s.sliderValue}>{form.rewardAllocationPct}%</span>
+                </div>
+                <Hint>
+                  {fmtNumber(Math.round((form.supply * form.rewardAllocationPct) / 100))} tokens allocated to farm rewards
+                </Hint>
+              </div>
+
+              {/* Duration */}
+              <div style={s.field}>
+                <Label>FARM DURATION (days)</Label>
+                <NumberInput
+                  value={form.farmDurationDays}
+                  onChange={(v) =>
+                    setForm((f) => ({ ...f, farmDurationDays: Math.max(1, Math.round(v)) }))
+                  }
+                  min={1}
+                  max={365}
+                  step={1}
+                />
+                <Hint>
+                  {fmtNumber(Math.round((form.supply * form.rewardAllocationPct) / 100 / form.farmDurationDays))} tokens / day
+                </Hint>
+              </div>
+
+              {/* Auto-deploy */}
+              <div style={s.field}>
+                <Toggle
+                  checked={form.autoDeployAtGrad}
+                  onChange={(v) => setForm((f) => ({ ...f, autoDeployAtGrad: v }))}
+                  label="AUTO-DEPLOY AT GRADUATION"
+                />
+                <Hint>Automatically launch farm the moment the bonding curve fills</Hint>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -1466,6 +1563,14 @@ export default function LaunchPage() {
         symbol: form.tokenSymbol,
         description: form.description,
         imageDataUri: form.imageDataUri,
+        extensions: {
+          basedfarms: {
+            farmType: form.farmType,
+            rewardAllocationPct: form.rewardAllocationPct,
+            farmDurationDays: form.farmDurationDays,
+            autoDeployAtGrad: form.autoDeployAtGrad,
+          },
+        },
       });
 
       setStatus('building');

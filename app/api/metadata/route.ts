@@ -17,6 +17,7 @@ interface MetadataRecord {
   image: string; // data URI or empty string
   externalUrl?: string;
   attributes?: { trait_type: string; value: string }[];
+  extensions?: Record<string, unknown>;
 }
 
 // Module-level store — persists within one serverless instance
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       image: body.image ?? '',
       externalUrl: body.externalUrl,
       attributes: body.attributes,
+      extensions: body.extensions,
     });
 
     // Build public URL — use NEXT_PUBLIC_APP_URL if set, otherwise use request host
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
       image: record.image,
       external_url: record.externalUrl ?? '',
       attributes: record.attributes ?? [],
+      extensions: record.extensions ?? {},
     },
     {
       headers: {

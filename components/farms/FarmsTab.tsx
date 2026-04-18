@@ -2,570 +2,637 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
-import { BN } from '@coral-xyz/anchor';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import BN from 'bn.js';
 import {
-  FarmAccount,
-  StakePositionData,
-  FarmStateData,
-  fetchFarmsForMint,
-  fetchStakePosition,
-  fetchRewardVaultBalance,
-  fetchUserTokenBalance,
-  computePendingRewards,
-  createFarm,
-  stakeFarm,
-  unstakeFarm,
-  claimRewardsFarm,
-  type AnchorWallet,
-} from '@/lib/farmClient';
+  getLaunchpadPoolStatus,
+  getCpmmPoolForToken,
+  createRaydiumFarm,
+  stakeLp,
+  unstakeLp,
+  harvestRewards,
+  getFarmInfo,
+  getUserFarmPosition,
+  RewardType,
+  type LaunchpadPoolStatus,
+  type FormatFarmInfoOut,
+  type UserFarmPosition,
+  type FarmRewardInfo,
+} from '@/services/raydiumFarm';
+import type { ApiV3PoolInfoStandardItemCpmm } from '@raydium-io/raydium-sdk-v2';
 
-const DECIMALS = 6;
 const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
 const pressStart = 'var(--font-press-start), "Courier New", monospace';
 
-// ─── Formatting helpers ─────────────────────────────────────────────────────
+const IS_DEVNET = process.env.NEXT_PUBLIC_LAUNCH_NETWORK === 'devnet';
+const RPC_URL = IS_DEVNET
+  ? 'https://api.devnet.solana.com'
+  : (process.env.NEXT_PUBLIC_RPC_URL ?? 'https://mainnet.helius-rpc.com/?api-key=229cc849-fb9c-4ef0-968a-a0402480d121');
 
-function fmtBn(bn: BN | null | undefined): string {
-  if (!bn) return '—';
+const DECIMALS = 6;
+
+function fmtRaw(raw: BN | null | undefined, decimals = DECIMALS): string {
+  if (!raw) return '—';
   try {
-    const n = bn.toNumber();
-    const display = n / 10 ** DECIMALS;
-    return display.toLocaleString('en-US', { maximumFractionDigits: 4, minimumFractionDigits: 2 });
+    const n = raw.toNumber() / 10 ** decimals;
+    return n.toLocaleString('en-US', { maximumFractionDigits: 4, minimumFractionDigits: 2 });
   } catch {
     return '—';
   }
 }
 
-function fmtNum(n: number | null | undefined): string {
-  if (n == null) return '—';
-  return n.toLocaleString('en-US', { maximumFractionDigits: 4, minimumFractionDigits: 2 });
-}
-
-function shortKey(pk: PublicKey): string {
-  const s = pk.toBase58();
-  return `${s.slice(0, 4)}…${s.slice(-4)}`;
-}
-
-function daysHoursLabel(seconds: number): string {
-  if (seconds <= 0) return 'Unlocked';
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  if (days > 0) return `${days}d ${hours}h`;
-  return `${hours}h ${Math.floor((seconds % 3600) / 60)}m`;
-}
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-interface FarmRowState {
-  position: StakePositionData | null;
-  vaultBalance: number;
-  stakeAmount: string;
-  unstakeAmount: string;
+function farmStorageKey(tokenMint: string) {
+  return `basedfarms_farmId_${tokenMint}`;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
   const wallet = useWallet();
-  const mintPubkey = useMemo(() => new PublicKey(tokenMint), [tokenMint]);
 
-  const [farms, setFarms] = useState<FarmAccount[]>([]);
-  const [rowState, setRowState] = useState<Record<string, FarmRowState>>({});
-  const [userBalance, setUserBalance] = useState<number>(0);
+  // Pool / farm state
+  const [poolStatus, setPoolStatus] = useState<LaunchpadPoolStatus | null>(null);
+  const [cpmmPool, setCpmmPool] = useState<ApiV3PoolInfoStandardItemCpmm | null>(null);
+  const [farmId, setFarmId] = useState<string | null>(null);
+  const [farmInfo, setFarmInfo] = useState<FormatFarmInfoOut | null>(null);
+  const [userPosition, setUserPosition] = useState<UserFarmPosition | null>(null);
+  const [lpBalance, setLpBalance] = useState<BN>(new BN(0));
+
+  // UI state
   const [loading, setLoading] = useState(true);
   const [txStatus, setTxStatus] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ ratePerDay: '', lockDays: '0' });
   const [creating, setCreating] = useState(false);
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [unstakeAmount, setUnstakeAmount] = useState('');
+  const [txPending, setTxPending] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const fetched = await fetchFarmsForMint(mintPubkey);
-      setFarms(fetched);
+  // Create farm form
+  const [createForm, setCreateForm] = useState({
+    tokensPerDay: '',
+    durationDays: '30',
+  });
 
-      const newRowState: Record<string, FarmRowState> = {};
-      for (const farm of fetched) {
-        const key = farm.publicKey.toBase58();
-        const vaultBalance = await fetchRewardVaultBalance(farm.publicKey);
-        const position = wallet.publicKey
-          ? await fetchStakePosition(farm.publicKey, wallet.publicKey)
-          : null;
-        newRowState[key] = {
-          position,
-          vaultBalance,
-          stakeAmount: rowState[key]?.stakeAmount ?? '',
-          unstakeAmount: rowState[key]?.unstakeAmount ?? '',
-        };
-      }
-      setRowState(newRowState);
-
-      if (wallet.publicKey) {
-        setUserBalance(await fetchUserTokenBalance(mintPubkey, wallet.publicKey));
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mintPubkey, wallet.publicKey]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
+  // Clear tx status after 8 s
   useEffect(() => {
     if (!txStatus) return;
-    const t = setTimeout(() => setTxStatus(null), 6000);
+    const t = setTimeout(() => setTxStatus(null), 8000);
     return () => clearTimeout(t);
   }, [txStatus]);
 
-  // ─── Action handlers ───────────────────────────────────────────────────
+  // Load persisted farmId from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem(farmStorageKey(tokenMint));
+    if (saved) setFarmId(saved);
+  }, [tokenMint]);
 
-  const anchorWallet = useMemo((): AnchorWallet | null => {
-    if (!wallet.publicKey || !wallet.signTransaction || !wallet.signAllTransactions) return null;
-    return {
-      publicKey: wallet.publicKey,
-      signTransaction: wallet.signTransaction as AnchorWallet['signTransaction'],
-      signAllTransactions: wallet.signAllTransactions as AnchorWallet['signAllTransactions'],
-    };
-  }, [wallet.publicKey, wallet.signTransaction, wallet.signAllTransactions]);
+  // Refresh all on-chain data
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1. Pool status
+      const ps = await getLaunchpadPoolStatus(tokenMint);
+      setPoolStatus(ps);
+
+      if (!ps || ps.status < 2) {
+        setCpmmPool(null);
+        setFarmInfo(null);
+        setUserPosition(null);
+        return;
+      }
+
+      // 2. CPMM pool (post-migration)
+      const pool = await getCpmmPoolForToken(tokenMint);
+      setCpmmPool(pool);
+
+      // 3. Farm info (if farmId is known)
+      const storedId = typeof window !== 'undefined'
+        ? localStorage.getItem(farmStorageKey(tokenMint))
+        : null;
+      const currentFarmId = farmId ?? storedId;
+
+      if (currentFarmId) {
+        const info = await getFarmInfo(currentFarmId);
+        setFarmInfo(info);
+
+        // 4. User position + LP balance
+        if (wallet.publicKey && info) {
+          const [pos, balance] = await Promise.all([
+            getUserFarmPosition(info.id, info.programId, wallet.publicKey),
+            fetchLpBalance(pool?.lpMint?.address ?? '', wallet.publicKey),
+          ]);
+          setUserPosition(pos);
+          setLpBalance(balance);
+        }
+      }
+    } catch (e) {
+      console.error('[FarmsTab] refresh error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [tokenMint, farmId, wallet.publicKey]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // ─── LP balance helper ─────────────────────────────────────────────────
+
+  async function fetchLpBalance(lpMintAddr: string, owner: PublicKey): Promise<BN> {
+    if (!lpMintAddr) return new BN(0);
+    try {
+      const connection = new Connection(RPC_URL, 'confirmed');
+      const lpMint = new PublicKey(lpMintAddr);
+      const ata = getAssociatedTokenAddressSync(lpMint, owner);
+      const acct = await connection.getTokenAccountBalance(ata);
+      return new BN(acct.value.amount);
+    } catch {
+      return new BN(0);
+    }
+  }
+
+  // ─── Create farm ──────────────────────────────────────────────────────
 
   const handleCreateFarm = async () => {
-    if (!anchorWallet) return;
-    const rateRaw = Math.round(parseFloat(createForm.ratePerDay) * 10 ** DECIMALS / 86400);
-    const lockSecs = Math.round(parseFloat(createForm.lockDays) * 86400);
-    if (!rateRaw || isNaN(rateRaw)) {
-      setTxStatus({ msg: 'Enter a valid reward rate', ok: false });
+    if (!wallet.publicKey || !wallet.signTransaction || !cpmmPool) return;
+    const tokensPerDay = parseFloat(createForm.tokensPerDay);
+    const durationDays = parseFloat(createForm.durationDays);
+    if (!tokensPerDay || tokensPerDay <= 0 || !durationDays || durationDays < 1) {
+      setTxStatus({ msg: 'Enter valid reward rate and duration', ok: false });
       return;
     }
+
     setCreating(true);
-    setTxStatus({ msg: 'Deploying farm...', ok: true });
+    setTxStatus({ msg: 'Deploying farm…', ok: true });
     try {
-      const sig = await createFarm(
-        anchorWallet,
-        mintPubkey,
-        new BN(rateRaw),
-        new BN(lockSecs)
-      );
-      setTxStatus({ msg: `Farm deployed! tx: ${sig.slice(0, 8)}…`, ok: true });
+      const perSecond = (tokensPerDay * 10 ** DECIMALS / 86400).toFixed(0);
+      const openTime = Math.floor(Date.now() / 1000) + 60;
+      const endTime  = openTime + Math.round(durationDays * 86400);
+
+      const rewardInfos: FarmRewardInfo[] = [{
+        mint: new PublicKey(tokenMint),
+        perSecond,
+        openTime,
+        endTime,
+        rewardType: 'Standard SPL' as import('@raydium-io/raydium-sdk-v2').RewardType,
+      }];
+
+      const poolInfo = cpmmPool as unknown as import('@raydium-io/raydium-sdk-v2').ApiV3PoolInfoStandardItem;
+
+      const { farmId: newFarmId, txId } = await createRaydiumFarm({
+        poolInfo,
+        rewardInfos,
+        userPublicKey: wallet.publicKey,
+        signTransaction: wallet.signTransaction as (tx: import('@solana/web3.js').Transaction) => Promise<import('@solana/web3.js').Transaction>,
+      });
+
+      // Persist farmId
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(farmStorageKey(tokenMint), newFarmId);
+      }
+      setFarmId(newFarmId);
+      setTxStatus({ msg: `Farm deployed! tx: ${txId.slice(0, 8)}…`, ok: true });
       setShowCreate(false);
-      setCreateForm({ ratePerDay: '', lockDays: '0' });
+      setCreateForm({ tokensPerDay: '', durationDays: '30' });
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTxStatus({ msg: `Error: ${msg.slice(0, 50)}`, ok: false });
+      setTxStatus({ msg: `Error: ${msg.slice(0, 60)}`, ok: false });
     } finally {
       setCreating(false);
     }
   };
 
-  const handleStake = async (farm: FarmAccount) => {
-    if (!anchorWallet) return;
-    const key = farm.publicKey.toBase58();
-    const amtFloat = parseFloat(rowState[key]?.stakeAmount ?? '0');
+  // ─── Stake ────────────────────────────────────────────────────────────
+
+  const handleStake = async () => {
+    if (!wallet.publicKey || !wallet.signTransaction || !farmInfo) return;
+    const amtFloat = parseFloat(stakeAmount);
     if (!amtFloat || amtFloat <= 0) return;
-    const amtRaw = new BN(Math.floor(amtFloat * 10 ** DECIMALS).toString());
-    setTxStatus({ msg: 'Staking...', ok: true });
+    const amount = new BN(Math.floor(amtFloat * 10 ** DECIMALS).toString());
+
+    setTxPending(true);
+    setTxStatus({ msg: 'Staking LP…', ok: true });
     try {
-      const sig = await stakeFarm(anchorWallet, farm.publicKey, farm.account.stakeMint, amtRaw);
-      setTxStatus({ msg: `Staked! tx: ${sig.slice(0, 8)}…`, ok: true });
-      setRowState(prev => ({ ...prev, [key]: { ...prev[key], stakeAmount: '' } }));
+      const { txId } = await stakeLp({
+        farmInfo,
+        amount,
+        userPublicKey: wallet.publicKey,
+        signTransaction: wallet.signTransaction as (tx: import('@solana/web3.js').Transaction) => Promise<import('@solana/web3.js').Transaction>,
+      });
+      setTxStatus({ msg: `Staked! tx: ${txId.slice(0, 8)}…`, ok: true });
+      setStakeAmount('');
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTxStatus({ msg: `Error: ${msg.slice(0, 50)}`, ok: false });
+      setTxStatus({ msg: `Error: ${msg.slice(0, 60)}`, ok: false });
+    } finally {
+      setTxPending(false);
     }
   };
 
-  const handleUnstake = async (farm: FarmAccount) => {
-    if (!anchorWallet) return;
-    const key = farm.publicKey.toBase58();
-    const amtFloat = parseFloat(rowState[key]?.unstakeAmount ?? '0');
+  // ─── Unstake ──────────────────────────────────────────────────────────
+
+  const handleUnstake = async () => {
+    if (!wallet.publicKey || !wallet.signTransaction || !farmInfo) return;
+    const amtFloat = parseFloat(unstakeAmount);
     if (!amtFloat || amtFloat <= 0) return;
-    const amtRaw = new BN(Math.floor(amtFloat * 10 ** DECIMALS).toString());
-    setTxStatus({ msg: 'Unstaking...', ok: true });
+    const amount = new BN(Math.floor(amtFloat * 10 ** DECIMALS).toString());
+
+    setTxPending(true);
+    setTxStatus({ msg: 'Unstaking LP…', ok: true });
     try {
-      const sig = await unstakeFarm(anchorWallet, farm.publicKey, farm.account.stakeMint, amtRaw);
-      setTxStatus({ msg: `Unstaked! tx: ${sig.slice(0, 8)}…`, ok: true });
-      setRowState(prev => ({ ...prev, [key]: { ...prev[key], unstakeAmount: '' } }));
+      const { txId } = await unstakeLp({
+        farmInfo,
+        amount,
+        userPublicKey: wallet.publicKey,
+        signTransaction: wallet.signTransaction as (tx: import('@solana/web3.js').Transaction) => Promise<import('@solana/web3.js').Transaction>,
+      });
+      setTxStatus({ msg: `Unstaked! tx: ${txId.slice(0, 8)}…`, ok: true });
+      setUnstakeAmount('');
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTxStatus({ msg: `Error: ${msg.slice(0, 50)}`, ok: false });
+      setTxStatus({ msg: `Error: ${msg.slice(0, 60)}`, ok: false });
+    } finally {
+      setTxPending(false);
     }
   };
 
-  const handleClaim = async (farm: FarmAccount) => {
-    if (!anchorWallet) return;
-    setTxStatus({ msg: 'Claiming rewards...', ok: true });
+  // ─── Harvest ──────────────────────────────────────────────────────────
+
+  const handleHarvest = async () => {
+    if (!wallet.publicKey || !wallet.signTransaction || !farmInfo) return;
+
+    setTxPending(true);
+    setTxStatus({ msg: 'Claiming rewards…', ok: true });
     try {
-      const sig = await claimRewardsFarm(anchorWallet, farm.publicKey, farm.account.rewardMint);
-      setTxStatus({ msg: `Claimed! tx: ${sig.slice(0, 8)}…`, ok: true });
+      const { txId } = await harvestRewards({
+        farmInfo,
+        userPublicKey: wallet.publicKey,
+        signTransaction: wallet.signTransaction as (tx: import('@solana/web3.js').Transaction) => Promise<import('@solana/web3.js').Transaction>,
+      });
+      setTxStatus({ msg: `Claimed! tx: ${txId.slice(0, 8)}…`, ok: true });
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTxStatus({ msg: `Error: ${msg.slice(0, 50)}`, ok: false });
+      setTxStatus({ msg: `Error: ${msg.slice(0, 60)}`, ok: false });
+    } finally {
+      setTxPending(false);
     }
   };
 
-  // ─── Stats helpers ─────────────────────────────────────────────────────
+  // ─── Derived values ────────────────────────────────────────────────────
 
-  function calcApy(farmData: FarmStateData): string | null {
-    if (farmData.totalStaked.isZero()) return null;
-    try {
-      const rate = farmData.rewardRate.toNumber();
-      const staked = farmData.totalStaked.toNumber();
-      const apy = (rate * 86400 * 365 / staked) * 100;
-      return apy > 99999 ? '>99999' : apy.toFixed(1);
-    } catch {
-      return null;
-    }
-  }
-
-  function daysRemaining(farmData: FarmStateData, vaultBalance: number): string {
-    try {
-      const ratePerDay = farmData.rewardRate.toNumber() / 10 ** DECIMALS * 86400;
-      if (ratePerDay <= 0) return '—';
-      const days = vaultBalance / ratePerDay;
-      return days < 1 ? `${Math.floor(days * 24)}h` : `${Math.floor(days)}d`;
-    } catch {
-      return '—';
-    }
-  }
-
-  function unlockLabel(farmData: FarmStateData, position: StakePositionData | null): string {
-    if (!position || position.amount.isZero()) return '—';
-    try {
-      const stakeTime = position.stakeTime.toNumber();
-      const minDur = farmData.minStakeDuration.toNumber();
-      const unlockAt = stakeTime + minDur;
-      const secondsLeft = unlockAt - Math.floor(Date.now() / 1000);
-      return daysHoursLabel(secondsLeft);
-    } catch {
-      return '—';
-    }
-  }
+  const connected = !!wallet.publicKey;
+  const deposited = userPosition?.deposited ?? new BN(0);
+  const hasStaked = !deposited.isZero();
+  const lpBalanceDisplay = fmtRaw(lpBalance, 9); // LP tokens typically 9 decimals
+  const depositedDisplay = fmtRaw(deposited, 9);
 
   // ─── Render ────────────────────────────────────────────────────────────
 
-  const connected = !!wallet.publicKey;
+  if (loading) {
+    return (
+      <div style={s.centered}>
+        <div style={s.spinner}>◈</div>
+        <span style={s.loadingText}>LOADING…</span>
+      </div>
+    );
+  }
 
+  // No pool found
+  if (!poolStatus) {
+    return (
+      <div style={s.emptyCard}>
+        <div style={s.emptyIcon}>◈</div>
+        <div style={s.emptyTitle}>NO LAUNCHPAD POOL FOUND</div>
+        <div style={s.emptyBody}>This token has no active LaunchLab pool.</div>
+      </div>
+    );
+  }
+
+  // Pre-graduation: show bonding progress
+  if (poolStatus.status < 2) {
+    const pct = Math.min(poolStatus.pct, 100);
+    return (
+      <div style={s.wrap}>
+        <div style={s.graduationCard}>
+          <div style={s.gradTitle}>
+            {poolStatus.status === 1 ? 'MIGRATING TO RAYDIUM…' : 'BONDING CURVE ACTIVE'}
+          </div>
+          <div style={s.gradSubtitle}>
+            Farms unlock when this token graduates to Raydium CPMM
+          </div>
+
+          {/* Progress bar */}
+          <div style={s.progressWrap}>
+            <div style={s.progressBar}>
+              <div style={{ ...s.progressFill, width: `${pct}%` }} />
+            </div>
+            <div style={s.progressLabel}>
+              {pct.toFixed(1)}% · {poolStatus.raisedSol.toFixed(2)} / {poolStatus.targetSol.toFixed(2)} SOL
+            </div>
+          </div>
+
+          <div style={s.gradHint}>
+            {poolStatus.targetSol - poolStatus.raisedSol > 0
+              ? `${(poolStatus.targetSol - poolStatus.raisedSol).toFixed(2)} SOL remaining to graduation`
+              : 'Migration in progress'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Post-graduation, no CPMM pool found yet
+  if (!cpmmPool) {
+    return (
+      <div style={s.emptyCard}>
+        <div style={s.emptyIcon}>◈</div>
+        <div style={s.emptyTitle}>CPMM POOL LOADING</div>
+        <div style={s.emptyBody}>This token has graduated. Waiting for CPMM pool to appear.</div>
+        <button style={s.refreshBtn} onClick={refresh}>↻ REFRESH</button>
+      </div>
+    );
+  }
+
+  // Post-graduation, no farm deployed
+  if (!farmInfo) {
+    return (
+      <div style={s.wrap}>
+        {txStatus && (
+          <div style={{ ...s.toast, borderColor: txStatus.ok ? '#f97316' : '#ef4444' }}>
+            <span style={{ color: txStatus.ok ? '#f97316' : '#ef4444' }}>{txStatus.msg}</span>
+          </div>
+        )}
+
+        <div style={s.emptyCard}>
+          <div style={s.emptyIcon}>◈</div>
+          <div style={s.emptyTitle}>NO FARM DEPLOYED</div>
+          <div style={s.emptyBody}>
+            This token has graduated to Raydium CPMM.
+            {connected
+              ? ' Deploy a farm to reward LP holders.'
+              : ' Connect your wallet to deploy a farm.'}
+          </div>
+          {connected && (
+            <button style={s.deployBtn} onClick={() => setShowCreate(true)}>
+              + DEPLOY FARM
+            </button>
+          )}
+        </div>
+
+        {showCreate && (
+          <CreateModal
+            tokenMint={tokenMint}
+            form={createForm}
+            creating={creating}
+            onFormChange={setCreateForm}
+            onDeploy={handleCreateFarm}
+            onClose={() => setShowCreate(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Full staking UI
   return (
     <div style={s.wrap}>
-      {/* Devnet notice */}
-      <div style={s.devnetBanner}>
-        <span style={s.devnetBadge}>DEVNET</span>
-        <span style={s.devnetText}>Farms run on Solana devnet. Switch your wallet to devnet.</span>
-        <button style={s.refreshBtn} onClick={refresh} title="Refresh">↻</button>
-      </div>
-
-      {/* TX status toast */}
+      {/* TX toast */}
       {txStatus && (
         <div style={{ ...s.toast, borderColor: txStatus.ok ? '#f97316' : '#ef4444' }}>
           <span style={{ color: txStatus.ok ? '#f97316' : '#ef4444' }}>{txStatus.msg}</span>
         </div>
       )}
 
-      {/* Deploy Farm button */}
-      {connected && (
-        <button style={s.deployBtn} onClick={() => setShowCreate(true)}>
-          + DEPLOY FARM
-        </button>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div style={s.loadingWrap}>
-          <div style={s.spinner}>◈</div>
-          <span style={s.loadingText}>LOADING FARMS…</span>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loading && farms.length === 0 && (
-        <div style={s.emptyCard}>
-          <div style={s.emptyIcon}>◈</div>
-          <div style={s.emptyTitle}>NO FARMS DEPLOYED YET</div>
-          <div style={s.emptyBody}>
-            No liquidity farms have been initialized for this token.
-            {connected ? ' Click + DEPLOY FARM to create one.' : ' Connect your wallet to deploy.'}
+      {/* Farm card */}
+      <div style={s.farmCard}>
+        {/* Header */}
+        <div style={s.farmHeader}>
+          <div style={s.farmTitle}>◈ FARM</div>
+          <div style={s.farmMeta}>
+            <span style={s.farmMetaKey}>FARM ID</span>
+            <span style={s.farmMetaVal}>
+              {farmInfo.id.slice(0, 6)}…{farmInfo.id.slice(-4)}
+            </span>
           </div>
+          <button style={s.smallRefreshBtn} onClick={refresh} title="Refresh">↻</button>
         </div>
-      )}
 
-      {/* Farm cards */}
-      {!loading && farms.map((farm) => {
-        const key = farm.publicKey.toBase58();
-        const row = rowState[key];
-        const position = row?.position ?? null;
-        const vaultBalance = row?.vaultBalance ?? 0;
-        const farmData = farm.account;
+        {/* Your position */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>YOUR POSITION</div>
 
-        const pending = position
-          ? computePendingRewards(farmData, position)
-          : null;
-
-        const apy = calcApy(farmData);
-        const daysLeft = daysRemaining(farmData, vaultBalance);
-        const unlock = unlockLabel(farmData, position);
-
-        const sharePercent = position && !farmData.totalStaked.isZero()
-          ? (position.amount.toNumber() / farmData.totalStaked.toNumber() * 100).toFixed(2)
-          : null;
-
-        const canUnstake = position && !position.amount.isZero() &&
-          unlock === 'Unlocked';
-
-        return (
-          <div key={key} style={s.farmCard}>
-            {/* Farm header */}
-            <div style={s.farmHeader}>
-              <div style={s.farmTitle}>◈ FARM</div>
-              <div style={s.farmMeta}>
-                <span style={s.farmMetaKey}>AUTHORITY</span>
-                <span style={s.farmMetaVal}>{shortKey(farmData.authority)}</span>
-              </div>
-            </div>
-
-            {/* ── USER POSITION ── */}
-            <div style={s.section}>
-              <div style={s.sectionTitle}>YOUR POSITION</div>
-
-              {!connected ? (
-                <div style={s.connectNote}>Connect wallet to stake</div>
-              ) : (
-                <>
-                  <div style={s.posRow}>
-                    <div style={s.posItem}>
-                      <span style={s.posLabel}>STAKED</span>
-                      <span style={s.posValue}>{fmtBn(position?.amount ?? new BN(0))}</span>
-                    </div>
-                    <div style={s.posItem}>
-                      <span style={s.posLabel}>PENDING REWARDS</span>
-                      <span style={{ ...s.posValue, color: '#f97316' }}>{fmtBn(pending)}</span>
-                    </div>
-                    <div style={s.posItem}>
-                      <span style={s.posLabel}>WALLET BALANCE</span>
-                      <span style={s.posValue}>{fmtNum(userBalance)}</span>
-                    </div>
-                    <div style={s.posItem}>
-                      <span style={s.posLabel}>UNLOCK IN</span>
-                      <span style={{ ...s.posValue, color: unlock === 'Unlocked' ? '#4ade80' : '#e5e5e5' }}>
-                        {unlock}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Stake input */}
-                  <div style={s.inputRow}>
-                    <input
-                      type="number"
-                      placeholder="Amount to stake"
-                      value={row?.stakeAmount ?? ''}
-                      onChange={e => setRowState(prev => ({
-                        ...prev,
-                        [key]: { ...prev[key], stakeAmount: e.target.value },
-                      }))}
-                      style={s.amountInput}
-                    />
-                    <button
-                      style={s.maxBtn}
-                      onClick={() => setRowState(prev => ({
-                        ...prev,
-                        [key]: { ...prev[key], stakeAmount: userBalance.toFixed(4) },
-                      }))}
-                    >
-                      MAX
-                    </button>
-                    <button
-                      style={s.actionBtn}
-                      onClick={() => handleStake(farm)}
-                      disabled={!row?.stakeAmount || parseFloat(row.stakeAmount) <= 0}
-                    >
-                      STAKE
-                    </button>
-                  </div>
-
-                  {/* Unstake input */}
-                  <div style={s.inputRow}>
-                    <input
-                      type="number"
-                      placeholder="Amount to unstake"
-                      value={row?.unstakeAmount ?? ''}
-                      onChange={e => setRowState(prev => ({
-                        ...prev,
-                        [key]: { ...prev[key], unstakeAmount: e.target.value },
-                      }))}
-                      style={s.amountInput}
-                    />
-                    <button
-                      style={s.maxBtn}
-                      onClick={() => setRowState(prev => ({
-                        ...prev,
-                        [key]: { ...prev[key], unstakeAmount: fmtBn(position?.amount ?? new BN(0)).replace(/,/g, '') },
-                      }))}
-                    >
-                      MAX
-                    </button>
-                    <button
-                      style={{
-                        ...s.actionBtn,
-                        ...(!canUnstake ? s.actionBtnDisabled : {}),
-                      }}
-                      onClick={() => handleUnstake(farm)}
-                      disabled={!canUnstake || !row?.unstakeAmount || parseFloat(row.unstakeAmount) <= 0}
-                    >
-                      UNSTAKE
-                    </button>
-                  </div>
-
-                  {/* Claim */}
-                  <button
-                    style={{
-                      ...s.claimBtn,
-                      ...((!pending || pending.isZero()) ? s.claimBtnDisabled : {}),
-                    }}
-                    onClick={() => handleClaim(farm)}
-                    disabled={!pending || pending.isZero()}
-                  >
-                    CLAIM {fmtBn(pending)} REWARDS
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* ── FARM STATS ── */}
-            <div style={s.section}>
-              <div style={s.sectionTitle}>FARM STATS</div>
-              <div style={s.statsGrid}>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>TOTAL STAKED</span>
-                  <span style={s.statValue}>{fmtBn(farmData.totalStaked)}</span>
+          {!connected ? (
+            <div style={s.connectNote}>Connect wallet to stake LP</div>
+          ) : (
+            <>
+              <div style={s.posRow}>
+                <div style={s.posItem}>
+                  <span style={s.posLabel}>STAKED LP</span>
+                  <span style={s.posValue}>{depositedDisplay}</span>
                 </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>RATE / DAY</span>
-                  <span style={s.statValue}>
-                    {(() => {
-                      try {
-                        return fmtNum(farmData.rewardRate.toNumber() / 10 ** DECIMALS * 86400);
-                      } catch { return '—'; }
-                    })()}
-                  </span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>APY</span>
-                  <span style={{ ...s.statValue, color: '#f97316' }}>
-                    {apy ? `${apy}%` : '—'}
-                  </span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>YOUR SHARE</span>
-                  <span style={s.statValue}>{sharePercent ? `${sharePercent}%` : '—'}</span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>VAULT BALANCE</span>
-                  <span style={s.statValue}>{fmtNum(vaultBalance)}</span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>REWARDS END IN</span>
-                  <span style={{ ...s.statValue, color: '#f59e0b' }}>{daysLeft}</span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>MIN LOCK</span>
-                  <span style={s.statValue}>
-                    {(() => {
-                      try {
-                        const secs = farmData.minStakeDuration.toNumber();
-                        return secs === 0 ? 'None' : daysHoursLabel(secs);
-                      } catch { return '—'; }
-                    })()}
-                  </span>
-                </div>
-                <div style={s.statItem}>
-                  <span style={s.statLabel}>FARM PDA</span>
-                  <span style={{ ...s.statValue, fontSize: '10px' }}>{shortKey(farm.publicKey)}</span>
+                <div style={s.posItem}>
+                  <span style={s.posLabel}>LP BALANCE</span>
+                  <span style={s.posValue}>{lpBalanceDisplay}</span>
                 </div>
               </div>
-            </div>
-          </div>
-        );
-      })}
 
-      {/* ── CREATE FARM MODAL ── */}
-      {showCreate && (
-        <div style={s.modalOverlay} onClick={() => setShowCreate(false)}>
-          <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalTitle}>DEPLOY FARM</div>
-            <div style={s.modalSubtitle}>Single-sided staking · Devnet</div>
+              {/* Stake */}
+              <div style={s.inputRow}>
+                <input
+                  type="number"
+                  placeholder="Amount to stake"
+                  value={stakeAmount}
+                  onChange={e => setStakeAmount(e.target.value)}
+                  style={s.amountInput}
+                  disabled={txPending}
+                />
+                <button
+                  style={s.maxBtn}
+                  onClick={() => setStakeAmount(
+                    (lpBalance.toNumber() / 10 ** 9).toFixed(6)
+                  )}
+                  disabled={txPending}
+                >
+                  MAX
+                </button>
+                <button
+                  style={{
+                    ...s.actionBtn,
+                    ...(!stakeAmount || parseFloat(stakeAmount) <= 0 || txPending ? s.actionBtnDisabled : {}),
+                  }}
+                  onClick={handleStake}
+                  disabled={!stakeAmount || parseFloat(stakeAmount) <= 0 || txPending}
+                >
+                  STAKE
+                </button>
+              </div>
 
-            <div style={s.modalField}>
-              <label style={s.modalLabel}>STAKE / REWARD TOKEN</label>
-              <div style={s.modalStatic}>{tokenMint.slice(0, 8)}…{tokenMint.slice(-8)}</div>
-            </div>
+              {/* Unstake */}
+              <div style={s.inputRow}>
+                <input
+                  type="number"
+                  placeholder="Amount to unstake"
+                  value={unstakeAmount}
+                  onChange={e => setUnstakeAmount(e.target.value)}
+                  style={s.amountInput}
+                  disabled={txPending}
+                />
+                <button
+                  style={s.maxBtn}
+                  onClick={() => setUnstakeAmount(
+                    (deposited.toNumber() / 10 ** 9).toFixed(6)
+                  )}
+                  disabled={txPending || !hasStaked}
+                >
+                  MAX
+                </button>
+                <button
+                  style={{
+                    ...s.actionBtn,
+                    ...(!unstakeAmount || parseFloat(unstakeAmount) <= 0 || !hasStaked || txPending ? s.actionBtnDisabled : {}),
+                  }}
+                  onClick={handleUnstake}
+                  disabled={!unstakeAmount || parseFloat(unstakeAmount) <= 0 || !hasStaked || txPending}
+                >
+                  UNSTAKE
+                </button>
+              </div>
 
-            <div style={s.modalField}>
-              <label style={s.modalLabel}>REWARD RATE (tokens / day)</label>
-              <input
-                type="number"
-                placeholder="e.g. 1000"
-                value={createForm.ratePerDay}
-                onChange={e => setCreateForm(prev => ({ ...prev, ratePerDay: e.target.value }))}
-                style={s.modalInput}
-              />
-              <span style={s.modalHint}>
-                Per second: {createForm.ratePerDay
-                  ? (parseFloat(createForm.ratePerDay) / 86400).toFixed(6)
-                  : '—'}
-              </span>
-            </div>
-
-            <div style={s.modalField}>
-              <label style={s.modalLabel}>MIN LOCK DURATION (days)</label>
-              <input
-                type="number"
-                placeholder="0 = no lock"
-                value={createForm.lockDays}
-                onChange={e => setCreateForm(prev => ({ ...prev, lockDays: e.target.value }))}
-                style={s.modalInput}
-              />
-              <span style={s.modalHint}>
-                {parseFloat(createForm.lockDays) > 0
-                  ? `${parseFloat(createForm.lockDays) * 86400} seconds`
-                  : 'No lock period'}
-              </span>
-            </div>
-
-            <div style={s.modalNote}>
-              You become the farm authority. Fund the reward vault after creation
-              via the fund_rewards instruction.
-            </div>
-
-            <div style={s.modalActions}>
-              <button
-                style={s.cancelBtn}
-                onClick={() => setShowCreate(false)}
-                disabled={creating}
-              >
-                CANCEL
-              </button>
+              {/* Harvest */}
               <button
                 style={{
-                  ...s.deployModalBtn,
-                  ...(creating ? s.deployModalBtnDisabled : {}),
+                  ...s.claimBtn,
+                  ...(!hasStaked || txPending ? s.claimBtnDisabled : {}),
                 }}
-                onClick={handleCreateFarm}
-                disabled={creating || !createForm.ratePerDay}
+                onClick={handleHarvest}
+                disabled={!hasStaked || txPending}
               >
-                {creating ? 'DEPLOYING…' : 'DEPLOY FARM'}
+                CLAIM REWARDS
               </button>
+            </>
+          )}
+        </div>
+
+        {/* Farm stats */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>FARM STATS</div>
+          <div style={s.statsGrid}>
+            <div style={s.statItem}>
+              <span style={s.statLabel}>APR</span>
+              <span style={{ ...s.statValue, color: '#f97316' }}>
+                {farmInfo.apr ? `${farmInfo.apr.toFixed(1)}%` : '—'}
+              </span>
+            </div>
+            <div style={s.statItem}>
+              <span style={s.statLabel}>TVL</span>
+              <span style={s.statValue}>
+                {farmInfo.tvl ? `$${farmInfo.tvl.toLocaleString()}` : '—'}
+              </span>
+            </div>
+            <div style={s.statItem}>
+              <span style={s.statLabel}>LP MINT</span>
+              <span style={{ ...s.statValue, fontSize: '10px' }}>
+                {farmInfo.lpMint.address.slice(0, 6)}…{farmInfo.lpMint.address.slice(-4)}
+              </span>
+            </div>
+            <div style={s.statItem}>
+              <span style={s.statLabel}>REWARDS</span>
+              <span style={s.statValue}>{farmInfo.rewardInfos.length} token(s)</span>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Create farm modal ────────────────────────────────────────────────────────
+
+interface CreateModalProps {
+  tokenMint: string;
+  form: { tokensPerDay: string; durationDays: string };
+  creating: boolean;
+  onFormChange: (f: { tokensPerDay: string; durationDays: string }) => void;
+  onDeploy: () => void;
+  onClose: () => void;
+}
+
+function CreateModal({ tokenMint, form, creating, onFormChange, onDeploy, onClose }: CreateModalProps) {
+  const perSecDisplay = form.tokensPerDay
+    ? (parseFloat(form.tokensPerDay) / 86400).toFixed(6)
+    : '—';
+
+  return (
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <div style={s.modalTitle}>DEPLOY FARM</div>
+        <div style={s.modalSubtitle}>Raydium V6 permissionless farm · LP staking</div>
+
+        <div style={s.modalField}>
+          <label style={s.modalLabel}>REWARD TOKEN</label>
+          <div style={s.modalStatic}>
+            {tokenMint.slice(0, 8)}…{tokenMint.slice(-8)}
+            <span style={{ color: '#555555', marginLeft: '8px' }}>(this token)</span>
+          </div>
+        </div>
+
+        <div style={s.modalField}>
+          <label style={s.modalLabel}>REWARD RATE (tokens / day)</label>
+          <input
+            type="number"
+            placeholder="e.g. 10000"
+            value={form.tokensPerDay}
+            onChange={e => onFormChange({ ...form, tokensPerDay: e.target.value })}
+            style={s.modalInput}
+            disabled={creating}
+          />
+          <span style={s.modalHint}>Per second: {perSecDisplay}</span>
+        </div>
+
+        <div style={s.modalField}>
+          <label style={s.modalLabel}>DURATION (days)</label>
+          <input
+            type="number"
+            placeholder="e.g. 30"
+            value={form.durationDays}
+            onChange={e => onFormChange({ ...form, durationDays: e.target.value })}
+            style={s.modalInput}
+            disabled={creating}
+            min={1}
+          />
+          <span style={s.modalHint}>
+            Farm ends in {form.durationDays || '—'} days
+            · Total reward: {form.tokensPerDay && form.durationDays
+              ? (parseFloat(form.tokensPerDay) * parseFloat(form.durationDays)).toLocaleString()
+              : '—'} tokens
+          </span>
+        </div>
+
+        <div style={s.modalNote}>
+          You are the farm authority. Fund the reward vault before rewards begin.
+          Farm starts 60 seconds after deployment.
+        </div>
+
+        <div style={s.modalActions}>
+          <button style={s.cancelBtn} onClick={onClose} disabled={creating}>CANCEL</button>
+          <button
+            style={{ ...s.deployModalBtn, ...(creating ? s.deployModalBtnDisabled : {}) }}
+            onClick={onDeploy}
+            disabled={creating || !form.tokensPerDay || !form.durationDays}
+          >
+            {creating ? 'DEPLOYING…' : 'DEPLOY FARM'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
   wrap: {
@@ -576,44 +643,23 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: font,
     fontSize: '12px',
   },
-
-  // Devnet banner
-  devnetBanner: {
+  centered: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',
-    background: '#111111',
-    border: '1px solid #1a1a1a',
-    borderRadius: '8px',
-    padding: '8px 12px',
+    gap: '12px',
+    padding: '40px 0',
   },
-  devnetBadge: {
-    background: '#1a1a1a',
-    color: '#888888',
-    fontSize: '9px',
-    letterSpacing: '1px',
-    padding: '2px 6px',
-    borderRadius: '4px',
-    whiteSpace: 'nowrap' as const,
+  spinner: {
+    fontSize: '24px',
+    color: '#444444',
+  },
+  loadingText: {
+    color: '#555555',
+    fontSize: '11px',
+    letterSpacing: '0.5px',
     fontFamily: font,
   },
-  devnetText: {
-    color: '#666666',
-    fontSize: '11px',
-    letterSpacing: '0.3px',
-    flex: 1,
-  },
-  refreshBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#555555',
-    fontSize: '16px',
-    cursor: 'pointer',
-    padding: '0 4px',
-    lineHeight: 1,
-  },
-
-  // Toast
   toast: {
     padding: '10px 14px',
     background: '#111111',
@@ -621,43 +667,8 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: '8px',
     fontSize: '12px',
     letterSpacing: '0.3px',
-  },
-
-  // Deploy button
-  deployBtn: {
     fontFamily: font,
-    fontSize: '12px',
-    fontWeight: '600',
-    letterSpacing: '0.5px',
-    padding: '10px 16px',
-    background: '#f97316',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#000000',
-    cursor: 'pointer',
-    alignSelf: 'flex-end',
   },
-
-  // Loading
-  loadingWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '32px 0',
-  },
-  spinner: {
-    fontSize: '24px',
-    color: '#444444',
-    animation: 'pulse 2s ease-in-out infinite',
-  },
-  loadingText: {
-    color: '#555555',
-    fontSize: '12px',
-    letterSpacing: '0.5px',
-  },
-
-  // Empty state
   emptyCard: {
     background: '#111111',
     border: '1px solid #1a1a1a',
@@ -668,6 +679,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '14px',
     textAlign: 'center',
+    fontFamily: font,
   },
   emptyIcon: {
     fontSize: '28px',
@@ -675,16 +687,80 @@ const s: Record<string, React.CSSProperties> = {
   },
   emptyTitle: {
     color: '#888888',
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: '600',
     letterSpacing: '0.5px',
   },
   emptyBody: {
     color: '#555555',
-    fontSize: '12px',
+    fontSize: '11px',
     lineHeight: '1.7',
     letterSpacing: '0.3px',
-    maxWidth: '280px',
+    maxWidth: '300px',
+  },
+  refreshBtn: {
+    background: 'transparent',
+    border: '1px solid #222222',
+    borderRadius: '6px',
+    color: '#555555',
+    fontSize: '12px',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontFamily: font,
+    letterSpacing: '0.3px',
+    marginTop: '4px',
+  },
+
+  // Graduation card
+  graduationCard: {
+    background: '#111111',
+    border: '1px solid #1a1a1a',
+    borderRadius: '12px',
+    padding: '24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+    fontFamily: font,
+  },
+  gradTitle: {
+    fontFamily: pressStart,
+    color: '#f97316',
+    fontSize: '9px',
+    letterSpacing: '1px',
+  },
+  gradSubtitle: {
+    color: '#666666',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
+    lineHeight: '1.6',
+  },
+  progressWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  progressBar: {
+    width: '100%',
+    height: '6px',
+    background: '#1a1a1a',
+    borderRadius: '3px',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    background: '#f97316',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease',
+  },
+  progressLabel: {
+    color: '#888888',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
+  },
+  gradHint: {
+    color: '#555555',
+    fontSize: '11px',
+    letterSpacing: '0.3px',
   },
 
   // Farm card
@@ -712,6 +788,8 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
+    flex: 1,
+    justifyContent: 'center',
   },
   farmMetaKey: {
     color: '#555555',
@@ -723,8 +801,17 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: '10px',
     letterSpacing: '0.5px',
   },
+  smallRefreshBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: '#444444',
+    fontSize: '16px',
+    cursor: 'pointer',
+    padding: '0 4px',
+    lineHeight: 1,
+  },
 
-  // Section
+  // Sections
   section: {
     padding: '14px 16px',
     borderBottom: '1px solid #0f0f0f',
@@ -746,7 +833,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: '12px 0',
   },
 
-  // Position grid
+  // Position
   posRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -770,7 +857,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: '500',
   },
 
-  // Input rows
+  // Inputs
   inputRow: {
     display: 'flex',
     gap: '6px',
@@ -820,8 +907,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#333333',
     cursor: 'not-allowed',
   },
-
-  // Claim button
   claimBtn: {
     fontFamily: font,
     fontSize: '12px',
@@ -842,7 +927,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'not-allowed',
   },
 
-  // Stats grid
+  // Stats
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -865,11 +950,26 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: '500',
   },
 
+  // Deploy button (in empty state)
+  deployBtn: {
+    fontFamily: font,
+    fontSize: '12px',
+    fontWeight: '600',
+    letterSpacing: '0.5px',
+    padding: '10px 18px',
+    background: '#f97316',
+    border: 'none',
+    borderRadius: '8px',
+    color: '#000000',
+    cursor: 'pointer',
+    marginTop: '4px',
+  },
+
   // Modal
   modalOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.8)',
+    background: 'rgba(0,0,0,0.85)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -886,15 +986,16 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
+    fontFamily: font,
   },
   modalTitle: {
     color: '#ffffff',
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: '700',
     letterSpacing: '1px',
   },
   modalSubtitle: {
-    color: '#666666',
+    color: '#555555',
     fontSize: '11px',
     letterSpacing: '0.3px',
     marginTop: '-8px',
