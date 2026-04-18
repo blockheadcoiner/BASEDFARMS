@@ -867,13 +867,11 @@ function Step3({
         <Toggle
           checked={form.bonkBurnEnabled}
           onChange={(v) => setForm((f) => ({ ...f, bonkBurnEnabled: v }))}
-          label="🔥 BONK BURN ANIMATION ON SUCCESS"
+          label="🔥 BONK BURN"
         />
-        {form.bonkBurnEnabled && (
-          <div style={{ ...toggleContentStyle }}>
-            <Hint>Shows a BONK dog burn animation on the launch success screen.</Hint>
-          </div>
-        )}
+        <div style={{ ...s.hint, marginTop: '6px' }}>
+          Launches with 10M tokens then burns excess down to your target supply. Creates permanent scarcity on-chain.
+        </div>
       </div>
 
       {/* Creator Fees */}
