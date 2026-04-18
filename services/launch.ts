@@ -386,6 +386,64 @@ export async function createToken(
   return { txIds, mintAddress, poolId };
 }
 
+/* ── createVestingForPool ─────────────────────────────────────────────────── */
+
+/**
+ * Assigns vested tokens in a LaunchLab pool to a beneficiary wallet.
+ *
+ * Must be called after createToken() when vestingEnabled is true.
+ * shareAmount must equal the totalLockedAmount set during pool creation.
+ *
+ * @param poolId        Pool public key (from createToken result)
+ * @param beneficiary   Wallet that will receive the unlocked tokens
+ * @param shareAmount   Raw token units to assign (must ≤ pool totalLockedAmount)
+ * @param userPublicKey Payer / signer
+ * @param signTransaction Wallet adapter single-tx signer
+ */
+export async function createVestingForPool(
+  poolId: PublicKey,
+  beneficiary: PublicKey,
+  shareAmount: BN,
+  userPublicKey: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>,
+): Promise<string> {
+  const connection = getConn();
+  const raydium = await loadRaydium(userPublicKey);
+
+  console.log('[Launch] createVesting', {
+    poolId: poolId.toBase58(),
+    beneficiary: beneficiary.toBase58(),
+    shareAmount: shareAmount.toString(),
+  });
+
+  const txData = await raydium.launchpad.createVesting({
+    programId: LAUNCH_PROGRAM_ID,
+    poolId,
+    beneficiary,
+    shareAmount,
+    txVersion: TxVersion.LEGACY,
+    computeBudgetConfig: { units: 400_000, microLamports: 100_000 },
+  });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const tx = txData.transaction as Transaction;
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = userPublicKey;
+
+  const txSigners = (txData.signers ?? []) as import('@solana/web3.js').Signer[];
+  if (txSigners.length > 0) tx.sign(...txSigners);
+
+  const signed = await signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+    maxRetries: 3,
+  });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+
+  console.log('[Launch] vesting created:', sig);
+  return sig;
+}
+
 /* ── Based Score calculator ───────────────────────────────────────────────── */
 
 export interface BasedScoreBreakdown {

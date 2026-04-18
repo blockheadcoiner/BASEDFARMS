@@ -4,8 +4,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL, Transaction } from '@solana/web3.js';
+import BN from 'bn.js';
 import {
   createToken,
+  createVestingForPool,
   uploadMetadata,
   calcBasedScore,
   CpmmCreatorFeeOn,
@@ -82,6 +84,7 @@ interface FormState {
   creatorFeeOn: CpmmCreatorFeeOn;
   bonkBurnEnabled: boolean;
   feeDestination: string;
+  vestingBeneficiary: string;
   farmType: 'staking' | 'lp' | 'revenue' | 'later';
   rewardAllocationPct: number;
   farmDurationDays: number;
@@ -108,6 +111,7 @@ const DEFAULT: FormState = {
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
   bonkBurnEnabled: false,
   feeDestination: '',
+  vestingBeneficiary: '',
   farmType: 'lp',
   rewardAllocationPct: 20,
   farmDurationDays: 30,
@@ -814,6 +818,15 @@ function Step3({
                 />
               </div>
             </div>
+            <div style={s.field}>
+              <Label>BENEFICIARY WALLET (optional)</Label>
+              <TextInput
+                value={form.vestingBeneficiary}
+                onChange={(v) => setForm((f) => ({ ...f, vestingBeneficiary: v }))}
+                placeholder="Leave blank to vest to your wallet"
+              />
+              <Hint>Tokens unlock to this address. Defaults to your connected wallet.</Hint>
+            </div>
           </div>
         )}
       </div>
@@ -1217,7 +1230,7 @@ function Step4({
   isMobile,
 }: {
   form: FormState;
-  status: 'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done';
+  status: 'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'vesting' | 'done';
   error: string | null;
   txIds: string[];
   onLaunch: () => void;
@@ -1244,6 +1257,7 @@ function Step4({
     building: 'BUILDING TRANSACTIONS...',
     signing: 'WAITING FOR WALLET...',
     sending: 'SUBMITTING TO SOLANA...',
+    vesting: 'SETTING UP VESTING...',
     done: 'LAUNCH COMPLETE!',
   };
 
@@ -1525,7 +1539,7 @@ export default function LaunchPage() {
   const [form, setForm] = useState<FormState>(DEFAULT);
   const [touched, setTouched] = useState<Set<ScoreTouchedKey>>(new Set());
   const [status, setStatus] = useState<
-    'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'done'
+    'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'vesting' | 'done'
   >('idle');
   const [error, setError] = useState<string | null>(null);
   const [txIds, setTxIds] = useState<string[]>([]);
@@ -1540,7 +1554,7 @@ export default function LaunchPage() {
     });
   }, []);
 
-  const { publicKey, signAllTransactions } = useWallet();
+  const { publicKey, signAllTransactions, signTransaction } = useWallet();
 
   const canNext = (() => {
     if (step === 1)
@@ -1606,7 +1620,41 @@ export default function LaunchPage() {
       setStatus('sending');
       const result = await createToken(params, metadataUri, publicKey, typedSignAll);
 
-      setTxIds(result.txIds);
+      // ── Vesting: assign locked tokens to beneficiary ────────────────────
+      if (form.vestingEnabled && signTransaction) {
+        setStatus('vesting');
+
+        const vestPercent = Math.min(30, Math.max(0, form.vestingPercent));
+        const supplyRaw = form.supply * 10 ** 6;
+        const shareAmount = new BN(
+          Math.round(supplyRaw * vestPercent / 100).toString()
+        );
+
+        // Validate beneficiary address — fall back to creator wallet
+        let beneficiary = publicKey;
+        if (form.vestingBeneficiary.trim()) {
+          try {
+            const { PublicKey: PK } = await import('@solana/web3.js');
+            beneficiary = new PK(form.vestingBeneficiary.trim());
+          } catch {
+            // invalid address — use creator wallet silently
+          }
+        }
+
+        const { PublicKey: PK2 } = await import('@solana/web3.js');
+        const vestingTxId = await createVestingForPool(
+          new PK2(result.poolId),
+          beneficiary,
+          shareAmount,
+          publicKey,
+          signTransaction as (tx: Transaction) => Promise<Transaction>,
+        );
+
+        setTxIds([...result.txIds, vestingTxId]);
+      } else {
+        setTxIds(result.txIds);
+      }
+
       setStatus('done');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
