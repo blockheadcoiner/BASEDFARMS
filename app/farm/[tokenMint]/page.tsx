@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import SwapWidget from '@/components/swap/SwapWidget';
 import FarmsTab from '@/components/farms/FarmsTab';
@@ -20,10 +20,28 @@ interface Props {
   params: Promise<{ tokenMint: string }>;
 }
 
+interface SocialLinks {
+  x?: string;
+  telegram?: string;
+  website?: string;
+  discord?: string;
+  other?: string;
+}
+
 export default function FarmPage({ params }: Props) {
   const { tokenMint } = use(params);
   const [activeTab, setActiveTab] = useState<Tab>('swap');
   const [lastTx, setLastTx] = useState<string | null>(null);
+  const [socials, setSocials] = useState<SocialLinks>({});
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`basedfarms_socials_${tokenMint}`);
+      if (raw) setSocials(JSON.parse(raw) as SocialLinks);
+    } catch {
+      // no social links stored
+    }
+  }, [tokenMint]);
 
   const shortMint = `${tokenMint.slice(0, 4)}…${tokenMint.slice(-4)}`;
 
@@ -34,6 +52,11 @@ export default function FarmPage({ params }: Props) {
         <div style={styles.logo}>BASED<span style={styles.logoAccent}>FARMS</span></div>
         <div style={styles.headerRight}>
           <div style={styles.mintPill}>{shortMint}</div>
+          {socials.x && <a href={socials.x} target="_blank" rel="noopener noreferrer" style={styles.socialIcon} title="X / Twitter">𝕏</a>}
+          {socials.telegram && <a href={socials.telegram} target="_blank" rel="noopener noreferrer" style={styles.socialIcon} title="Telegram">TG</a>}
+          {socials.website && <a href={socials.website} target="_blank" rel="noopener noreferrer" style={styles.socialIcon} title="Website">WEB</a>}
+          {socials.discord && <a href={socials.discord} target="_blank" rel="noopener noreferrer" style={styles.socialIcon} title="Discord">DC</a>}
+          {socials.other && <a href={socials.other} target="_blank" rel="noopener noreferrer" style={styles.socialIcon} title="Other">◈</a>}
           <Link href="/tokens" style={styles.tokensLink}>TOKENS</Link>
           <Link href="/launch" style={styles.launchBtn}>+ LAUNCH</Link>
         </div>
@@ -238,6 +261,22 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#888888',
     letterSpacing: '0.5px',
     fontFamily: pressStart,
+  },
+  socialIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#1a1a1a',
+    border: '1px solid #333',
+    borderRadius: '6px',
+    padding: '4px 7px',
+    color: '#aaa',
+    fontFamily: font,
+    fontSize: '9px',
+    fontWeight: 600,
+    letterSpacing: '0.5px',
+    textDecoration: 'none',
+    transition: 'border-color 0.15s, color 0.15s',
   },
   tokensLink: {
     fontFamily: font,

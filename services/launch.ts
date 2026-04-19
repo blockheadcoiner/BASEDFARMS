@@ -143,6 +143,13 @@ export interface LaunchParams {
   /** SOL to spend on an initial buy at launch (0 = no initial buy) */
   initialBuyLamports: number;
   creatorFeeOn: CpmmCreatorFeeOn;
+
+  // Step 1 — Social links (all optional)
+  socialX?: string;
+  socialTelegram?: string;
+  socialWebsite?: string;
+  socialDiscord?: string;
+  socialOther?: string;
 }
 
 export interface LaunchResult {
@@ -472,7 +479,7 @@ export type ScoreTouchedKey =
   | 'initialBuySol';
 
 export function calcBasedScore(
-  params: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number },
+  params: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number; socialX?: string; socialTelegram?: string; socialWebsite?: string; socialDiscord?: string; socialOther?: string },
   touched: Set<ScoreTouchedKey> = new Set(),
 ): BasedScoreBreakdown {
   const t = (key: ScoreTouchedKey) => touched.has(key);
@@ -533,6 +540,14 @@ export function calcBasedScore(
   const vestingEarned  = t('vestingEnabled') && !!params.vestingEnabled;
   const creatorEarned  = t('creatorFeeOn') && params.creatorFeeOn === CpmmCreatorFeeOn.OnlyTokenB;
 
+  /* ── SOCIAL LINKS (up to 15 pts) — no touch required ── */
+  const socialCount = [params.socialX, params.socialTelegram, params.socialWebsite, params.socialDiscord, params.socialOther].filter(Boolean).length;
+  const hasWebsite = !!(params.socialWebsite);
+  const socialBasePts = socialCount >= 3 ? 10 : socialCount >= 1 ? 5 : 0;
+  const socialWebsitePts = hasWebsite ? 5 : 0;
+  const socialTotalPts = socialBasePts + socialWebsitePts;
+  const socialEarned = socialCount > 0;
+
   /* ── INITIAL BUY (up to +10, down to -5) ── */
   const buySOL = params.initialBuySol ?? 0;
   const initialBuyEarned = t('initialBuySol') && buySOL > 0;
@@ -558,6 +573,12 @@ export function calcBasedScore(
     { label: 'Vesting enabled',        pts: 20, earned: vestingEarned,    category: 'ADVANCED' },
     { label: 'Creator fees: SOL only', pts: 10, earned: creatorEarned,    category: 'ADVANCED' },
     { label: initialBuyLabel,          pts: initialBuyPts, earned: initialBuyEarned, category: 'INITIAL BUY' },
+    ...(socialEarned ? [
+      { label: `${socialCount} social link${socialCount > 1 ? 's' : ''} added`, pts: socialBasePts, earned: true, category: 'SOCIAL' },
+      ...(hasWebsite ? [{ label: 'Website included', pts: 5, earned: true, category: 'SOCIAL' }] : []),
+    ] : [
+      { label: 'Social links (add for +5–15 pts)', pts: 15, earned: false, category: 'SOCIAL' },
+    ]),
   ];
 
   if (eitherBased) {
@@ -576,7 +597,8 @@ export function calcBasedScore(
     + (solTargetEarned ? solTargetPts : 0)
     + (vestingEarned ? 20 : 0)
     + (creatorEarned ? 10 : 0)
-    + (initialBuyEarned ? initialBuyPts : 0);
+    + (initialBuyEarned ? initialBuyPts : 0)
+    + (socialEarned ? socialTotalPts : 0);
 
   const rawTotal = baseScore + basedBonusPts;
   const total    = Math.min(100, rawTotal);

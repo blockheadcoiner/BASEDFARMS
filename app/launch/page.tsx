@@ -82,6 +82,11 @@ interface FormState {
   creatorFeeOn: CpmmCreatorFeeOn;
   vestingBeneficiary: string;
   farmType: 'lp' | 'later';
+  socialX: string;
+  socialTelegram: string;
+  socialWebsite: string;
+  socialDiscord: string;
+  socialOther: string;
 }
 
 const DEFAULT: FormState = {
@@ -101,6 +106,11 @@ const DEFAULT: FormState = {
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
   vestingBeneficiary: '',
   farmType: 'lp',
+  socialX: '',
+  socialTelegram: '',
+  socialWebsite: '',
+  socialDiscord: '',
+  socialOther: '',
 };
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -351,7 +361,7 @@ function BasedScorePanel({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const scoreParams: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number } = {
+  const scoreParams: Partial<LaunchParams> & { imageDataUri?: string; initialBuySol?: number; socialX?: string; socialTelegram?: string; socialWebsite?: string; socialDiscord?: string; socialOther?: string } = {
     name: form.tokenName,
     symbol: form.tokenSymbol,
     vestingEnabled: form.vestingEnabled,
@@ -361,6 +371,11 @@ function BasedScorePanel({
     creatorFeeOn: form.creatorFeeOn,
     imageDataUri: form.imageDataUri,
     initialBuySol: form.initialBuyEnabled ? form.initialBuySol : 0,
+    socialX: form.socialX,
+    socialTelegram: form.socialTelegram,
+    socialWebsite: form.socialWebsite,
+    socialDiscord: form.socialDiscord,
+    socialOther: form.socialOther,
   };
 
   const { total, rawTotal, hasBasedBonus, basedBonusPts, items } = calcBasedScore(scoreParams, touched);
@@ -546,8 +561,115 @@ function Step1({
         )}
       </div>
 
+      <SocialLinksSection form={form} setForm={setForm} />
+
     </Card>
   );
+}
+
+/* ── Social Links Section ─────────────────────────────────────────────────── */
+
+function SocialLinksSection({
+  form,
+  setForm,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const filledCount = [form.socialX, form.socialTelegram, form.socialWebsite, form.socialDiscord, form.socialOther].filter(Boolean).length;
+
+  return (
+    <div style={s.field}>
+      <button
+        style={s.socialToggle}
+        onClick={() => setExpanded((v) => !v)}
+        type="button"
+      >
+        <span>SOCIAL LINKS <span style={{ color: '#888', fontWeight: 400, fontSize: '0.75em' }}>(OPTIONAL)</span></span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {filledCount > 0 && (
+            <span style={s.socialBadge}>{filledCount} ADDED</span>
+          )}
+          <span style={{ color: '#f97316' }}>{expanded ? '▲' : '▼'}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div style={s.socialGrid}>
+          <SocialField
+            label="𝕏 / TWITTER"
+            placeholder="https://x.com/yourtoken"
+            value={form.socialX}
+            onChange={(v) => setForm((f) => ({ ...f, socialX: v }))}
+          />
+          <SocialField
+            label="TELEGRAM"
+            placeholder="https://t.me/yourtoken"
+            value={form.socialTelegram}
+            onChange={(v) => setForm((f) => ({ ...f, socialTelegram: v }))}
+          />
+          <SocialField
+            label="WEBSITE"
+            placeholder="https://yourtoken.xyz"
+            value={form.socialWebsite}
+            onChange={(v) => setForm((f) => ({ ...f, socialWebsite: v }))}
+          />
+          <SocialField
+            label="DISCORD"
+            placeholder="https://discord.gg/yourtoken"
+            value={form.socialDiscord}
+            onChange={(v) => setForm((f) => ({ ...f, socialDiscord: v }))}
+          />
+          <SocialField
+            label="OTHER"
+            placeholder="https://..."
+            value={form.socialOther}
+            onChange={(v) => setForm((f) => ({ ...f, socialOther: v }))}
+          />
+          <div style={{ ...s.hint, gridColumn: '1 / -1', marginTop: 4 }}>
+            +5 pts for any link · +10 pts for 3+ links · +5 pts bonus for website
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SocialField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const isValid = !value || isValidUrl(value);
+  return (
+    <div style={s.socialFieldWrap}>
+      <div style={{ ...s.label, marginBottom: 4, fontSize: '0.65em' }}>{label}</div>
+      <input
+        type="url"
+        style={{ ...s.socialInput, borderColor: !isValid ? '#ef4444' : value ? '#f97316' : '#222' }}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {!isValid && <span style={s.socialError}>Invalid URL</span>}
+    </div>
+  );
+}
+
+function isValidUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 /* ── Step 2 ───────────────────────────────────────────────────────────────── */
@@ -1388,6 +1510,10 @@ export default function LaunchPage() {
           totalNeeded: totalNeeded.toFixed(4),
         });
       }
+      const socials = Object.fromEntries(
+        Object.entries({ x: form.socialX, telegram: form.socialTelegram, website: form.socialWebsite, discord: form.socialDiscord, other: form.socialOther })
+          .filter(([, v]) => !!v),
+      );
       const metadataUri = await uploadMetadata({
         name: form.tokenName,
         symbol: form.tokenSymbol,
@@ -1396,6 +1522,7 @@ export default function LaunchPage() {
         extensions: {
           basedfarms: {
             farmType: form.farmType,
+            ...(Object.keys(socials).length > 0 ? { socials } : {}),
           },
         },
       });
@@ -1511,6 +1638,11 @@ export default function LaunchPage() {
       }
 
       setMintAddress(result.mintAddress);
+      // Persist social links for farm page display (localStorage keyed by mint)
+      if (typeof window !== 'undefined') {
+        const socialsPayload = { x: form.socialX, telegram: form.socialTelegram, website: form.socialWebsite, discord: form.socialDiscord, other: form.socialOther };
+        localStorage.setItem(`basedfarms_socials_${result.mintAddress}`, JSON.stringify(socialsPayload));
+      }
       setStatus('done');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1874,6 +2006,60 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: '1px',
     textAlign: 'left',
     padding: '4px 0',
+  },
+  socialToggle: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    background: '#111',
+    border: '1px solid #222',
+    borderRadius: '8px',
+    padding: '10px 14px',
+    color: '#aaa',
+    fontFamily: pressStart,
+    fontSize: '7px',
+    letterSpacing: '1px',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  socialBadge: {
+    background: '#f97316',
+    color: '#000',
+    fontFamily: pressStart,
+    fontSize: '6px',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    letterSpacing: '1px',
+  },
+  socialGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '10px',
+    marginTop: '10px',
+  },
+  socialFieldWrap: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 0,
+  },
+  socialInput: {
+    background: '#111',
+    border: '1px solid #222',
+    borderRadius: '6px',
+    padding: '8px 10px',
+    color: '#fff',
+    fontFamily: font,
+    fontSize: '8px',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box' as const,
+  },
+  socialError: {
+    color: '#ef4444',
+    fontFamily: font,
+    fontSize: '6px',
+    marginTop: '2px',
   },
   radioGroup: {
     display: 'flex',
