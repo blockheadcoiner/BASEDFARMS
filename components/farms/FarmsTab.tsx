@@ -369,16 +369,15 @@ export default function FarmsTab({ tokenMint }: { tokenMint: string }) {
 
         <div style={s.emptyCard}>
           <div style={s.emptyIcon}>◈</div>
-          <div style={s.emptyTitle}>NO FARM DEPLOYED</div>
+          <div style={s.emptyTitle}>TOKEN GRADUATED</div>
           <div style={s.emptyBody}>
-            This token has graduated to Raydium CPMM.
-            {connected
-              ? ' Deploy a farm to reward LP holders.'
-              : ' Connect your wallet to deploy a farm.'}
+            Deploy an LP staking farm to incentivize liquidity providers.
+            You fund the rewards from your wallet after deployment.
+            {!connected && ' Connect your wallet to continue.'}
           </div>
           {connected && (
             <button style={s.deployBtn} onClick={() => setShowCreate(true)}>
-              + DEPLOY FARM
+              + DEPLOY LP FARM
             </button>
           )}
         </div>
@@ -569,8 +568,8 @@ function CreateModal({ tokenMint, form, creating, onFormChange, onDeploy, onClos
   return (
     <div style={s.modalOverlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
-        <div style={s.modalTitle}>DEPLOY FARM</div>
-        <div style={s.modalSubtitle}>Raydium V6 permissionless farm · LP staking</div>
+        <div style={s.modalTitle}>DEPLOY LP FARM</div>
+        <div style={s.modalSubtitle}>Raydium V6 permissionless farm · LP holders earn rewards</div>
 
         <div style={s.modalField}>
           <label style={s.modalLabel}>REWARD TOKEN</label>

@@ -83,13 +83,9 @@ interface FormState {
   initialBuyEnabled: boolean;
   initialBuySol: number;
   creatorFeeOn: CpmmCreatorFeeOn;
-  bonkBurnEnabled: boolean;
   feeDestination: string;
   vestingBeneficiary: string;
-  farmType: 'staking' | 'lp' | 'revenue' | 'later';
-  rewardAllocationPct: number;
-  farmDurationDays: number;
-  autoDeployAtGrad: boolean;
+  farmType: 'lp' | 'later';
 }
 
 const DEFAULT: FormState = {
@@ -110,13 +106,9 @@ const DEFAULT: FormState = {
   initialBuyEnabled: false,
   initialBuySol: 0.1,
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
-  bonkBurnEnabled: false,
   feeDestination: '',
   vestingBeneficiary: '',
   farmType: 'lp',
-  rewardAllocationPct: 20,
-  farmDurationDays: 30,
-  autoDeployAtGrad: true,
 };
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -936,18 +928,6 @@ function Step3({
         )}
       </div>
 
-      {/* BONK Burn */}
-      <div style={s.toggleSection}>
-        <Toggle
-          checked={form.bonkBurnEnabled}
-          onChange={(v) => setForm((f) => ({ ...f, bonkBurnEnabled: v }))}
-          label="🔥 BONK BURN"
-        />
-        <div style={{ ...s.hint, marginTop: '6px' }}>
-          Launches with 10M tokens then burns excess down to your target supply. Creates permanent scarcity on-chain.
-        </div>
-      </div>
-
       {/* Creator Fees */}
       <div style={s.toggleSection}>
         <div style={s.toggleLabel2}>CREATOR FEE TYPE</div>
@@ -988,14 +968,12 @@ function Step3({
       <div style={s.toggleSection}>
         <div style={s.toggleLabel2}>FARM AT GRADUATION</div>
         <div style={{ ...s.hint, marginTop: '6px' }}>
-          Auto-deploy a yield farm when this token graduates to Raydium CPMM
+          Choose your farm strategy for when this token graduates to Raydium
         </div>
         <div style={{ ...toggleContentStyle, paddingLeft: 0, paddingTop: '12px' }}>
-          {/* Farm type */}
           <div style={s.field}>
-            <Label>FARM TYPE</Label>
             <div style={s.radioGroup}>
-              {(['lp', 'staking', 'revenue', 'later'] as const).map((t) => (
+              {(['lp', 'later'] as const).map((t) => (
                 <button
                   key={t}
                   style={{
@@ -1006,280 +984,19 @@ function Step3({
                   }}
                   onClick={() => setForm((f) => ({ ...f, farmType: t }))}
                 >
-                  {t === 'lp' ? 'LP STAKING' : t === 'staking' ? 'TOKEN STAKING' : t === 'revenue' ? 'REVENUE SHARE' : 'LATER'}
+                  {t === 'lp' ? 'LP STAKING' : 'CONFIGURE LATER'}
                 </button>
               ))}
             </div>
             <Hint>
-              {form.farmType === 'lp' && 'LP holders earn rewards — deepens liquidity'}
-              {form.farmType === 'staking' && 'Token holders earn rewards — rewards long-term holders'}
-              {form.farmType === 'revenue' && 'Trading fees distributed to stakers — real yield'}
-              {form.farmType === 'later' && 'Skip for now — deploy manually from the farm page'}
+              {form.farmType === 'lp'
+                ? 'When your bonding curve fills, visit this token\'s farm page to deploy an LP staking farm. Liquidity providers earn rewards you fund from your wallet.'
+                : 'You can deploy a farm anytime after graduation from the token\'s farm page.'}
             </Hint>
           </div>
-
-          {form.farmType !== 'later' && (
-            <>
-              {/* Reward allocation */}
-              <div style={s.field}>
-                <Label>REWARD ALLOCATION (% of supply)</Label>
-                <div style={s.sliderRow}>
-                  <input
-                    type="range"
-                    style={{ ...s.slider, width: '100%' }}
-                    min={1}
-                    max={50}
-                    step={1}
-                    value={form.rewardAllocationPct}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, rewardAllocationPct: parseInt(e.target.value) }))
-                    }
-                  />
-                  <span style={s.sliderValue}>{form.rewardAllocationPct}%</span>
-                </div>
-                <Hint>
-                  {fmtNumber(Math.round((form.supply * form.rewardAllocationPct) / 100))} tokens allocated to farm rewards
-                </Hint>
-              </div>
-
-              {/* Duration */}
-              <div style={s.field}>
-                <Label>FARM DURATION (days)</Label>
-                <NumberInput
-                  value={form.farmDurationDays}
-                  onChange={(v) =>
-                    setForm((f) => ({ ...f, farmDurationDays: Math.max(1, Math.round(v)) }))
-                  }
-                  min={1}
-                  max={365}
-                  step={1}
-                />
-                <Hint>
-                  {fmtNumber(Math.round((form.supply * form.rewardAllocationPct) / 100 / form.farmDurationDays))} tokens / day
-                </Hint>
-              </div>
-
-              {/* Auto-deploy */}
-              <div style={s.field}>
-                <Toggle
-                  checked={form.autoDeployAtGrad}
-                  onChange={(v) => setForm((f) => ({ ...f, autoDeployAtGrad: v }))}
-                  label="AUTO-DEPLOY AT GRADUATION"
-                />
-                <Hint>Automatically launch farm the moment the bonding curve fills</Hint>
-              </div>
-            </>
-          )}
         </div>
       </div>
     </Card>
-  );
-}
-
-/* ── BONK Burn Animation ─────────────────────────────────────────────────── */
-
-const BONK_BURN_CSS = `
-  @keyframes bonkSlideUp {
-    from { transform: translateY(200px); opacity: 0; }
-    to   { transform: translateY(0);     opacity: 1; }
-  }
-  @keyframes bonkFlicker {
-    0%   { transform: scaleY(1)   rotate(-3deg); opacity: 0.9; }
-    100% { transform: scaleY(1.2) rotate( 3deg); opacity: 1;   }
-  }
-  @keyframes bonkFadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0);   }
-  }
-  @keyframes bonkCountGlow {
-    0%   { text-shadow: 0 0 10px #ff6b00, 0 0 20px #ff0000; }
-    50%  { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ff6b00; }
-    100% { text-shadow: 0 0 10px #ff6b00, 0 0 20px #ff0000; }
-  }
-  .bonk-flame::before {
-    content: '🔥';
-    font-size: 36px;
-    display: block;
-    animation: bonkFlicker 0.3s ease-in-out infinite alternate;
-  }
-  .bonk-flame-sm::before {
-    content: '🔥';
-    font-size: 24px;
-    display: block;
-    animation: bonkFlicker 0.3s ease-in-out infinite alternate;
-  }
-`;
-
-type BurnPhase = 'initial' | 'dog' | 'burning' | 'done';
-
-function BonkBurnAnimation({
-  supply,
-  curvePercent,
-  isMobile,
-}: {
-  supply: number;
-  curvePercent: number;
-  isMobile: boolean;
-}) {
-  const sellA = Math.round((supply * curvePercent) / 100);
-  const remaining = supply - sellA;
-
-  const [phase, setPhase] = useState<BurnPhase>('initial');
-  const [displayCount, setDisplayCount] = useState(supply);
-  const rafRef = useRef<number>(0);
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase('dog'), 300);
-    const t2 = setTimeout(() => {
-      setPhase('burning');
-      const start = supply;
-      const end = remaining;
-      const duration = 1500;
-      const t0 = performance.now();
-      const tick = (now: number) => {
-        const p = Math.min((now - t0) / duration, 1);
-        // ease-in-out quad for dramatic effect
-        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-        setDisplayCount(Math.round(start - (start - end) * eased));
-        if (p < 1) {
-          rafRef.current = requestAnimationFrame(tick);
-        } else {
-          setDisplayCount(end);
-          setPhase('done');
-        }
-      };
-      rafRef.current = requestAnimationFrame(tick);
-    }, 1100);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [supply, remaining]);
-
-  const flameClass = isMobile ? 'bonk-flame-sm' : 'bonk-flame';
-  const isBurning = phase === 'burning' || phase === 'done';
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '8px',
-        maxHeight: '300px',
-        overflow: 'hidden',
-        padding: isMobile ? '10px 8px 0' : '14px 12px 0',
-        boxSizing: 'border-box',
-      }}
-    >
-      {/* inject keyframes once */}
-      <style>{BONK_BURN_CSS}</style>
-
-      {/* TOKEN LAUNCHED header */}
-      <div
-        style={{
-          fontFamily: font,
-          fontSize: isMobile ? '8px' : '10px',
-          letterSpacing: '3px',
-          color: '#f97316',
-          textAlign: 'center',
-        }}
-      >
-        TOKEN LAUNCHED!
-      </div>
-
-      {/* Supply number + flanking flames */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: isMobile ? '4px' : '8px',
-          minHeight: isMobile ? '40px' : '50px',
-        }}
-      >
-        {isBurning && <div className={flameClass} />}
-
-        <div
-          style={{
-            fontFamily: font,
-            fontSize: isMobile ? '16px' : '22px',
-            letterSpacing: '2px',
-            color: phase === 'burning' ? '#ff6b00' : '#f97316',
-            animation: phase === 'burning' ? 'bonkCountGlow 0.3s ease-in-out infinite' : undefined,
-            transition: 'color 0.3s ease',
-            minWidth: isMobile ? '130px' : '190px',
-            textAlign: 'center',
-          }}
-        >
-          {displayCount.toLocaleString()}
-        </div>
-
-        {isBurning && <div className={flameClass} />}
-      </div>
-
-      {/* Bonk dog slides up */}
-      {(phase === 'dog' || phase === 'burning' || phase === 'done') && (
-        <div
-          style={{
-            fontSize: isMobile ? '30px' : '40px',
-            animation: 'bonkSlideUp 0.8s ease-out',
-            lineHeight: 1,
-          }}
-        >
-          🐕
-        </div>
-      )}
-
-      {/* Final burn complete state */}
-      {phase === 'done' && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '5px',
-            animation: 'bonkFadeIn 0.4s ease-out',
-          }}
-        >
-          <div
-            style={{
-              fontFamily: font,
-              fontSize: isMobile ? '7px' : '8px',
-              letterSpacing: '2px',
-              color: '#f59e0b',
-              textShadow: '0 0 12px rgba(245,158,11,0.9)',
-            }}
-          >
-            🔥 BONK BURN COMPLETE 🔥
-          </div>
-          <div
-            style={{
-              fontFamily: font,
-              fontSize: isMobile ? '6px' : '7px',
-              letterSpacing: '1.5px',
-              color: '#ef4444',
-              textShadow: '0 0 8px rgba(239,68,68,0.6)',
-            }}
-          >
-            BURNED: {sellA.toLocaleString()}
-          </div>
-          <div
-            style={{
-              fontFamily: font,
-              fontSize: isMobile ? '6px' : '7px',
-              letterSpacing: '1.5px',
-              color: '#db2777',
-              textShadow: '0 0 10px rgba(219,39,119,0.8)',
-            }}
-          >
-            REMAINING: {remaining.toLocaleString()} FOREVER
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1290,6 +1007,7 @@ function Step4({
   status,
   error,
   txIds,
+  mintAddress,
   vestingStreamId,
   vestingDashboardUrl,
   onLaunch,
@@ -1299,6 +1017,7 @@ function Step4({
   status: 'idle' | 'uploading' | 'building' | 'signing' | 'sending' | 'vesting' | 'done';
   error: string | null;
   txIds: string[];
+  mintAddress: string | null;
   vestingStreamId: string | null;
   vestingDashboardUrl: string | null;
   onLaunch: () => void;
@@ -1437,14 +1156,21 @@ function Step4({
       {/* Success */}
       {status === 'done' && txIds.length > 0 && (
         <div style={s.successBox}>
-          {form.bonkBurnEnabled ? (
-            <BonkBurnAnimation
-              supply={form.supply}
-              curvePercent={form.curvePercent}
-              isMobile={isMobile}
-            />
-          ) : (
-            <div style={s.successTitle}>🚀 TOKEN LAUNCHED!</div>
+          <div style={s.successTitle}>🚀 TOKEN LAUNCHED!</div>
+          {mintAddress && (
+            <div style={{ marginBottom: '8px' }}>
+              <div style={{ fontFamily: font, fontSize: '8px', letterSpacing: '2px', color: '#888', marginBottom: '4px' }}>
+                MINT ADDRESS
+              </div>
+              <a
+                href={`https://solscan.io/token/${mintAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={s.txLink}
+              >
+                {mintAddress.slice(0, 16)}...{mintAddress.slice(-8)} ↗
+              </a>
+            </div>
           )}
           <div style={s.txList}>
             {txIds.map((sig, i) => (
@@ -1672,6 +1398,7 @@ export default function LaunchPage() {
   >('idle');
   const [error, setError] = useState<string | null>(null);
   const [txIds, setTxIds] = useState<string[]>([]);
+  const [mintAddress, setMintAddress] = useState<string | null>(null);
   const [vestingStreamId, setVestingStreamId] = useState<string | null>(null);
   const [vestingDashboardUrl, setVestingDashboardUrl] = useState<string | null>(null);
   const [scoreExpanded, setScoreExpanded] = useState(false);
@@ -1744,9 +1471,6 @@ export default function LaunchPage() {
         extensions: {
           basedfarms: {
             farmType: form.farmType,
-            rewardAllocationPct: form.rewardAllocationPct,
-            farmDurationDays: form.farmDurationDays,
-            autoDeployAtGrad: form.autoDeployAtGrad,
           },
         },
       });
@@ -1866,6 +1590,7 @@ export default function LaunchPage() {
         setTxIds(result.txIds);
       }
 
+      setMintAddress(result.mintAddress);
       setStatus('done');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1965,6 +1690,7 @@ export default function LaunchPage() {
               status={status}
               error={error}
               txIds={txIds}
+              mintAddress={mintAddress}
               vestingStreamId={vestingStreamId}
               vestingDashboardUrl={vestingDashboardUrl}
               onLaunch={handleLaunch}
@@ -1986,6 +1712,7 @@ export default function LaunchPage() {
                 status={status}
                 error={error}
                 txIds={txIds}
+                mintAddress={mintAddress}
                 vestingStreamId={vestingStreamId}
                 vestingDashboardUrl={vestingDashboardUrl}
                 onLaunch={handleLaunch}

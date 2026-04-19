@@ -216,7 +216,7 @@ export default function HomePage() {
 
         <div style={styles.stepsGrid}>
           {[
-            { num: '01', title: 'LAUNCH TOKEN',        body: 'Deploy your token with custom bonding curve, Based Score, and optional BONK BURN. Built on Raydium LaunchLab.' },
+            { num: '01', title: 'LAUNCH TOKEN',        body: 'Deploy your token with custom bonding curve and Based Score. Built on Raydium LaunchLab.' },
             { num: '02', title: 'GRADUATE TO RAYDIUM', body: 'When your bonding curve hits target SOL, your token auto-graduates to a Raydium pool. Deep liquidity. Immediate trading.' },
             { num: '03', title: 'FARM YIELD',          body: 'Post-graduation your token unlocks Raydium permissionless farms. Stakers earn rewards. Creators earn fees forever.' },
           ].map((step) => (
