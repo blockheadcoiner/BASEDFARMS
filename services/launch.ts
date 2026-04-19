@@ -133,11 +133,6 @@ export interface LaunchParams {
   targetSol: number;
 
   // Step 3 — Advanced
-  token2022: boolean;
-  /** Transfer fee in basis points (0–1000). Only used when token2022 = true */
-  transferFeeBps: number;
-  /** Max transfer fee in token's raw units. Only used when token2022 = true */
-  maxTransferFeeRaw: bigint;
   vestingEnabled: boolean;
   /** % of total supply reserved for vesting (0–30). Only used when vestingEnabled = true */
   vestingPercent: number;
@@ -303,13 +298,6 @@ export async function createToken(
     unlockPeriod: new BN(0),
     buyAmount,
     minMintAAmount,
-    token2022: params.token2022,
-    transferFeeExtensionParams: params.token2022 && params.transferFeeBps > 0
-      ? {
-          transferFeeBasePoints: params.transferFeeBps,
-          maxinumFee: new BN(params.maxTransferFeeRaw.toString()),
-        }
-      : undefined,
     creatorFeeOn: params.creatorFeeOn,
     shareFeeRate: SHARE_FEE_RATE,
     shareFeeReceiver: getTreasury(),

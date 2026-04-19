@@ -73,9 +73,6 @@ interface FormState {
   supply: number;
   curvePercent: number;
   targetSol: number;
-  token2022: boolean;
-  transferFeeBps: number;
-  maxTransferFeeTokens: number;
   vestingEnabled: boolean;
   vestingPercent: number;
   cliffDays: number;
@@ -83,7 +80,6 @@ interface FormState {
   initialBuyEnabled: boolean;
   initialBuySol: number;
   creatorFeeOn: CpmmCreatorFeeOn;
-  feeDestination: string;
   vestingBeneficiary: string;
   farmType: 'lp' | 'later';
 }
@@ -96,9 +92,6 @@ const DEFAULT: FormState = {
   supply: 100_000_000,
   curvePercent: 79.31,
   targetSol: 85,
-  token2022: false,
-  transferFeeBps: 0,
-  maxTransferFeeTokens: 0,
   vestingEnabled: false,
   vestingPercent: 10,
   cliffDays: 30,
@@ -106,7 +99,6 @@ const DEFAULT: FormState = {
   initialBuyEnabled: false,
   initialBuySol: 0.1,
   creatorFeeOn: CpmmCreatorFeeOn.OnlyTokenB,
-  feeDestination: '',
   vestingBeneficiary: '',
   farmType: 'lp',
 };
@@ -708,61 +700,6 @@ function Step3({
     <Card isMobile={isMobile}>
       <div style={s.stepTitle}>STEP 3 · ADVANCED OPTIONS</div>
 
-      {/* Token-2022 */}
-      <div style={s.toggleSection}>
-        <Toggle
-          checked={form.token2022}
-          onChange={(v) => setForm((f) => ({ ...f, token2022: v }))}
-          label="TOKEN-2022 · TRANSFER FEE"
-        />
-        <div style={{ ...s.hint, marginTop: '6px' }}>
-          Collect fees on every trade for burns, rewards, or treasury. Transparent on-chain.
-        </div>
-        {form.token2022 && (
-          <div style={toggleContentStyle}>
-            <div style={s.field}>
-              <Label>TRANSFER FEE %</Label>
-              <NumberInput
-                value={form.transferFeeBps / 100}
-                onChange={(v) =>
-                  setForm((f) => ({
-                    ...f,
-                    transferFeeBps: Math.min(1000, Math.max(0, Math.round(v * 100))),
-                  }))
-                }
-                min={0}
-                max={10}
-                step={0.1}
-              />
-              <Hint>
-                {(form.transferFeeBps / 100).toFixed(1)}% fee on every transfer
-              </Hint>
-            </div>
-            <div style={s.field}>
-              <Label>MAX FEE PER TRANSFER (TOKENS)</Label>
-              <NumberInput
-                value={form.maxTransferFeeTokens}
-                onChange={(v) =>
-                  setForm((f) => ({ ...f, maxTransferFeeTokens: Math.max(0, v) }))
-                }
-                min={0}
-                step={1000}
-              />
-              <Hint>0 = no cap on transfer fee</Hint>
-            </div>
-            <div style={s.field}>
-              <Label>FEE DESTINATION</Label>
-              <TextInput
-                value={form.feeDestination}
-                onChange={(v) => setForm((f) => ({ ...f, feeDestination: v }))}
-                placeholder="e.g. Weekly token burns + staker rewards"
-              />
-              <Hint>Stored in token metadata for transparency</Hint>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Vesting */}
       <div style={s.toggleSection}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' as const }}>
@@ -1090,18 +1027,6 @@ function Step4({
               isMobile={isMobile}
             />
           </>
-        )}
-        <ReviewRow
-          label="TOKEN-2022"
-          value={form.token2022 ? 'YES' : 'NO'}
-          isMobile={isMobile}
-        />
-        {form.token2022 && form.transferFeeBps > 0 && (
-          <ReviewRow
-            label="TRANSFER FEE"
-            value={`${(form.transferFeeBps / 100).toFixed(1)}%`}
-            isMobile={isMobile}
-          />
         )}
         <ReviewRow
           label="INITIAL BUY"
@@ -1485,11 +1410,6 @@ export default function LaunchPage() {
         supply: form.supply,
         curvePercent: form.curvePercent,
         targetSol: form.targetSol,
-        token2022: form.token2022,
-        transferFeeBps: form.transferFeeBps,
-        maxTransferFeeRaw: BigInt(
-          Math.round(form.maxTransferFeeTokens * Math.pow(10, 6)),
-        ),
         vestingEnabled: form.vestingEnabled,
         vestingPercent: form.vestingPercent,
         cliffSeconds: form.cliffDays * 86400,
