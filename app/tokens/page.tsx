@@ -5,7 +5,8 @@ import Link from 'next/link';
 
 const pressStart = 'var(--font-press-start), "Courier New", monospace';
 const font = "'Geist', -apple-system, BlinkMacSystemFont, sans-serif";
-const PLATFORM_ID = '32SyS4SyyNK0AERNMk9vLjSdrJ9mUXrNkD5wUMASqHw4';
+const PLATFORM_ID =
+  process.env.NEXT_PUBLIC_PLATFORM_ID ?? '32SyS4SyyNK0AERNMk9vLjSdrJ9mUXrNkD5wUMASqHw4';
 const LIST_URL = 'https://launch-mint-v1.raydium.io/get/list';
 
 /* ── API types ────────────────────────────────────────────────────────────── */
