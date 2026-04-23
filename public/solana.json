@@ -1,0 +1,12 @@
+{
+  "name": "BASEDFARMS",
+  "description": "Solana DeFi launchpad with bonding curve launches, audited Streamflow vesting, and Raydium V6 permissionless farms. No fake features.",
+  "image": "https://basedfarms.fun/logo.png",
+  "website": "https://basedfarms.fun",
+  "twitter": "https://x.com/BASED_FARMS",
+  "github": "https://github.com/blockheadcoiner/BASEDFARMS",
+  "discord": "",
+  "telegram": "",
+  "protocols": ["Raydium LaunchLab", "Streamflow", "Raydium V6 Farms"],
+  "categories": ["DEX", "Launchpad", "DeFi"]
+}

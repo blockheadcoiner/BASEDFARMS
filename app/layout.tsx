@@ -20,8 +20,20 @@ const pressStart2P = Press_Start_2P({
 });
 
 export const metadata: Metadata = {
-  title: "BASEDFARMS",
-  description: "Solana DeFi launchpad with modular token building blocks",
+  title: "BASEDFARMS - Solana Token Launchpad",
+  description: "Launch tokens on Solana with audited vesting and real farms. No fake features.",
+  openGraph: {
+    title: "BASEDFARMS",
+    description: "Solana DeFi launchpad",
+    url: "https://basedfarms.fun",
+    siteName: "BASEDFARMS",
+    images: ["https://basedfarms.fun/og-image.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@BASED_FARMS",
+    creator: "@BASED_FARMS",
+  },
 };
 
 export default function RootLayout({
