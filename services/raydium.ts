@@ -491,6 +491,34 @@ export async function executeLaunchpadSwap(
   console.log('[Raydium/Launchpad] requesting wallet signature…');
   const signed = await signTransaction(transaction);
 
+  // ── Pre-flight simulation — surface the real program error before Phantom ──
+  try {
+    const simResult = await connection.simulateTransaction(signed, {
+      sigVerify: false,
+      commitment: 'confirmed',
+    });
+
+    console.log('[Swap] simulation result:', {
+      err: simResult.value.err,
+      logs: simResult.value.logs,
+      unitsConsumed: simResult.value.unitsConsumed,
+    });
+
+    if (simResult.value.err) {
+      const errorLogs = simResult.value.logs?.filter((l) =>
+        l.includes('Error') || l.includes('error') || l.includes('failed'),
+      ).join('\n') || 'No error logs';
+
+      throw new Error(
+        `Swap simulation failed: ${JSON.stringify(simResult.value.err)}\n\n` +
+        `Logs:\n${errorLogs}`,
+      );
+    }
+  } catch (e) {
+    console.error('[Swap] simulation error:', e);
+    throw e;
+  }
+
   console.log('[Raydium/Launchpad] sending…');
   const sig = await connection.sendRawTransaction(signed.serialize(), {
     skipPreflight: false,
