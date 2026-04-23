@@ -5,16 +5,13 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
-  getRaydiumQuote,
-  executeRaydiumSwap,
-  getLaunchpadQuote,
-  executeLaunchpadSwap,
+  getSwapQuote,
+  executeSwap,
   type NormalizedQuote,
 } from '@/services/raydium';
 import { useWalletModal } from '@/components/WalletProvider';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PLATFORM_FEE_PCT = '0.3';
 const DEFAULT_SLIPPAGE_BPS = 500;
 const LAUNCHPAD_TOKEN_DECIMALS = 6;
@@ -136,30 +133,7 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
     console.log('[SwapWidget] fetchQuote:', { dir, rawAmount, slippageBps: bps, tokenMint });
 
     try {
-      let result: NormalizedQuote;
-
-      if (dir === 'buy') {
-        try {
-          result = await getRaydiumQuote(SOL_MINT, tokenMint, rawAmount);
-          console.log('[SwapWidget] CPMM buy quote success');
-        } catch (cpmmErr) {
-          const msg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
-          if (msg !== 'POOL_NOT_FOUND') throw cpmmErr;
-          console.log('[SwapWidget] CPMM not found, trying LaunchLab buy…');
-          result = await getLaunchpadQuote(tokenMint, rawAmount, bps, 'buy');
-        }
-      } else {
-        try {
-          result = await getRaydiumQuote(tokenMint, SOL_MINT, rawAmount);
-          console.log('[SwapWidget] CPMM sell quote success');
-        } catch (cpmmErr) {
-          const msg = cpmmErr instanceof Error ? cpmmErr.message : String(cpmmErr);
-          if (msg !== 'POOL_NOT_FOUND') throw cpmmErr;
-          console.log('[SwapWidget] CPMM not found, trying LaunchLab sell…');
-          result = await getLaunchpadQuote(tokenMint, rawAmount, bps, 'sell');
-        }
-      }
-
+      const result = await getSwapQuote(tokenMint, rawAmount, bps, dir);
       console.log('[SwapWidget] quote success:', result);
       setQuote(result);
 
@@ -255,15 +229,10 @@ export default function SwapWidget({ tokenMint, tokenSymbol = 'TOKEN', feeAccoun
       : `${formatAmount(quote.outAmountRaw, 9)} SOL`;
 
     try {
-      let sig: string;
       const walletSign = (tx: Transaction) =>
         signTransaction(tx as Transaction) as Promise<Transaction>;
 
-      if (quote.subRouter === 'launchpad') {
-        sig = await executeLaunchpadSwap(quote, publicKey, walletSign);
-      } else {
-        sig = await executeRaydiumSwap(quote, publicKey, walletSign);
-      }
+      const sig = await executeSwap(quote, publicKey, walletSign);
 
       console.log('[SwapWidget] swap confirmed:', sig);
       setTxSignature(sig);

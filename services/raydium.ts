@@ -492,11 +492,11 @@ export async function executeLaunchpadSwap(
   const signed = await signTransaction(transaction);
 
   // ── Pre-flight simulation — surface the real program error before Phantom ──
+  // Note: legacy Transaction's simulateTransaction() overload doesn't accept
+  // {sigVerify, commitment} options (those are VersionedTransaction-only).
+  // The signed legacy tx already has all signatures, so default behavior works.
   try {
-    const simResult = await connection.simulateTransaction(signed, {
-      sigVerify: false,
-      commitment: 'confirmed',
-    });
+    const simResult = await connection.simulateTransaction(signed);
 
     console.log('[Swap] simulation result:', {
       err: simResult.value.err,
@@ -529,6 +529,68 @@ export async function executeLaunchpadSwap(
   await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
   console.log('[Raydium/Launchpad] confirmed:', sig);
   return sig;
+}
+
+/* ── Unified router ───────────────────────────────────────────────────────── */
+
+/**
+ * Route a swap quote to LaunchLab (pre-graduation) or CPMM (post-graduation).
+ *
+ * Probes the deterministic LaunchpadPool PDA first — one RPC call, no API hop.
+ * If a trading bonding-curve pool exists, uses it. Otherwise falls back to CPMM
+ * for tokens that have migrated (or were never on LaunchLab).
+ *
+ * @param direction  'buy' → SOL (amountRaw lamports) → token
+ *                   'sell' → token (amountRaw in token raw units) → SOL
+ */
+export async function getSwapQuote(
+  tokenMint: string,
+  amountRaw: number,
+  slippageBps: number,
+  direction: 'buy' | 'sell',
+): Promise<NormalizedQuote> {
+  const connection = getConn();
+  const mintPk = new PublicKey(tokenMint);
+
+  // 1. Probe LaunchLab pool PDA (deterministic — no network lookup)
+  const poolPda = getPdaLaunchpadPoolId(LAUNCH_PROGRAM_ID, mintPk, NATIVE_MINT).publicKey;
+  console.log('[Swap] probing LaunchLab pool PDA:', poolPda.toBase58());
+
+  const poolAccount = await connection.getAccountInfo(poolPda, 'processed');
+
+  if (poolAccount) {
+    console.log('[Swap] LaunchLab pool account exists — using bonding-curve path');
+    try {
+      return await getLaunchpadQuote(tokenMint, amountRaw, slippageBps, direction);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Pool exists but status != 0 (migrated) — fall through to CPMM
+      if (msg !== 'LAUNCHPAD_POOL_NOT_FOUND') throw err;
+      console.log('[Swap] LaunchLab pool not trading (migrated?) — falling back to CPMM');
+    }
+  } else {
+    console.log('[Swap] no LaunchLab pool — trying CPMM');
+  }
+
+  // 2. CPMM fallback for graduated / non-LaunchLab tokens
+  const [inputMint, outputMint] = direction === 'buy'
+    ? [RAYDIUM_SOL_MINT, tokenMint]
+    : [tokenMint, RAYDIUM_SOL_MINT];
+  return getRaydiumQuote(inputMint, outputMint, amountRaw);
+}
+
+/**
+ * Execute a swap built via getSwapQuote(). Dispatches to the launchpad or CPMM
+ * executor based on the quote's subRouter.
+ */
+export async function executeSwap(
+  quote: NormalizedQuote,
+  userPublicKey: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>,
+): Promise<string> {
+  return quote.subRouter === 'launchpad'
+    ? executeLaunchpadSwap(quote, userPublicKey, signTransaction)
+    : executeRaydiumSwap(quote, userPublicKey, signTransaction);
 }
 
 /**
