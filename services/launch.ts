@@ -28,6 +28,27 @@ import BN from 'bn.js';
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
 /**
+ * Construct a PublicKey, or throw a descriptive error naming the field that
+ * failed. Base58 excludes 0, O, l, I — transcription errors in env vars are a
+ * common source of "Non-base58 character" exceptions from deep inside the SDK.
+ */
+function safePubKey(str: string | undefined | null, fieldName: string): PublicKey {
+  if (!str || typeof str !== 'string' || str.trim() === '') {
+    throw new Error(`Invalid public key for "${fieldName}": value is empty or missing`);
+  }
+  try {
+    return new PublicKey(str);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Invalid public key for "${fieldName}": ${reason} ` +
+      `(value: ${JSON.stringify(str)}). ` +
+      `Base58 excludes 0, O, l, I — check for transcription errors.`,
+    );
+  }
+}
+
+/**
  * BASEDFARMS treasury — receives the 0.1 SOL launch fee and 0.3% trade share.
  * Reads from NEXT_PUBLIC_TREASURY_WALLET env var; falls back to hardcoded address.
  * Lazy getter so PublicKey is never constructed during SSR module initialisation.
@@ -37,7 +58,7 @@ const TREASURY_ADDRESS =
   '6MB3syAmv6rmVavKxZveDdPYrmmwGcwoM2BfkDbfkQd8';
 
 function getTreasury(): PublicKey {
-  return new PublicKey(TREASURY_ADDRESS);
+  return safePubKey(TREASURY_ADDRESS, 'NEXT_PUBLIC_TREASURY_WALLET');
 }
 
 /** 0.3% of bonding-curve trading volume routed to BASEDFARMS */
@@ -79,14 +100,20 @@ function getPlatformId(): PublicKey | undefined {
   if (IS_DEVNET) {
     const envId = process.env.NEXT_PUBLIC_DEVNET_PLATFORM_ID;
     if (envId) {
-      try { return new PublicKey(envId); }
-      catch { console.warn('[Launch] Invalid NEXT_PUBLIC_DEVNET_PLATFORM_ID — using hardcoded fallback'); }
+      try {
+        return safePubKey(envId, 'NEXT_PUBLIC_DEVNET_PLATFORM_ID');
+      } catch (e) {
+        console.warn('[Launch]', e instanceof Error ? e.message : String(e),
+          '— using hardcoded devnet fallback');
+      }
     }
     return DEVNET_PLATFORM_ID;
   }
   const id = process.env.NEXT_PUBLIC_PLATFORM_ID;
   if (!id) return undefined;
-  try { return new PublicKey(id); } catch { return undefined; }
+  // Surface the error instead of silently dropping — a bad platform ID makes
+  // the SDK fall back to its default which then fails with a cryptic message.
+  return safePubKey(id, 'NEXT_PUBLIC_PLATFORM_ID');
 }
 
 /* ── RPC ──────────────────────────────────────────────────────────────────── */
@@ -323,6 +350,20 @@ export async function createToken(
   }
 
   console.log('[Launch] launchConfig keys:', Object.keys(launchConfig));
+
+  // ── Debug: dump every PublicKey field + env vars before the SDK swallows them ──
+  console.log('[Launch] DEBUG PublicKey fields:');
+  console.log('  programId:', launchConfig.programId?.toBase58?.() ?? String(launchConfig.programId));
+  console.log('  mintA:', launchConfig.mintA?.toBase58?.() ?? String(launchConfig.mintA));
+  console.log('  configId:', launchConfig.configId?.toBase58?.() ?? String(launchConfig.configId));
+  console.log('  shareFeeReceiver:', launchConfig.shareFeeReceiver?.toBase58?.() ?? String(launchConfig.shareFeeReceiver));
+  console.log('  platformId:', launchConfig.platformId?.toBase58?.() ?? '(not set — SDK will use default)');
+  console.log('  migrateType:', launchConfig.migrateType);
+  console.log('[Launch] DEBUG env vars:');
+  console.log('  NEXT_PUBLIC_LAUNCH_NETWORK:', process.env.NEXT_PUBLIC_LAUNCH_NETWORK);
+  console.log('  NEXT_PUBLIC_PLATFORM_ID:', process.env.NEXT_PUBLIC_PLATFORM_ID);
+  console.log('  NEXT_PUBLIC_TREASURY_WALLET:', process.env.NEXT_PUBLIC_TREASURY_WALLET);
+  console.log('  NEXT_PUBLIC_RPC_URL:', process.env.NEXT_PUBLIC_RPC_URL ? '(set)' : '(unset)');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await raydium.launchpad.createLaunchpad(launchConfig as any) as any;
